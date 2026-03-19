@@ -9,7 +9,7 @@ mod windows;
 
 use std::sync::Arc;
 use serde::Deserialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 use crate::db::DbService;
 use crate::dwm::DwmService;
@@ -35,10 +35,10 @@ impl AppState {
     fn new() -> Result<Self, String> {
         Ok(Self {
             db: Arc::new(DbService::new()?),
-            thumbnail_service: Arc::new(ThumbnailService),
+            thumbnail_service: Arc::new(ThumbnailService::default()),
             hotkeys: Arc::new(HotkeyService),
             window_service: Arc::new(WindowService),
-            dwm: Arc::new(DwmService),
+            dwm: Arc::new(DwmService::default()),
             eve_tools: Arc::new(EveProfileToolsService),
         })
     }
@@ -64,10 +64,19 @@ fn create_profile(state: State<'_, AppState>, name: String) -> Result<Profile, S
 }
 
 #[tauri::command]
-fn set_current_profile(state: State<'_, AppState>, profile_id: i64) -> Result<(), String> {
+fn set_current_profile(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    profile_id: i64,
+) -> Result<(), String> {
     state.db.set_active_profile(profile_id)?;
     state.thumbnail_service.stop();
-    state.thumbnail_service.start();
+    state.thumbnail_service.start(
+        app_handle,
+        state.db.clone(),
+        state.window_service.clone(),
+        state.dwm.clone(),
+    );
     Ok(())
 }
 
@@ -77,7 +86,8 @@ fn update_profile_hotkey(
     profile_id: i64,
     hotkey: String,
 ) -> Result<(), String> {
-    state.db.update_profile_hotkey(profile_id, hotkey)
+    let normalized = state.hotkeys.validate_hotkey(&hotkey)?;
+    state.db.update_profile_hotkey(profile_id, normalized)
 }
 
 #[tauri::command]
@@ -156,6 +166,55 @@ fn get_client_groups(state: State<'_, AppState>, profile_id: i64) -> Result<Vec<
 }
 
 #[tauri::command]
+fn update_client_group_hotkeys(
+    state: State<'_, AppState>,
+    group_id: i64,
+    cycle_forward_hotkey: String,
+    cycle_backward_hotkey: String,
+) -> Result<(), String> {
+    let forward = state.hotkeys.validate_hotkey(&cycle_forward_hotkey)?;
+    let backward = state.hotkeys.validate_hotkey(&cycle_backward_hotkey)?;
+    state
+        .db
+        .update_client_group_hotkeys(group_id, forward, backward)
+}
+
+#[tauri::command]
+fn cycle_client_group(
+    state: State<'_, AppState>,
+    group_id: i64,
+    direction: String,
+) -> Result<(), String> {
+    let members = state.db.get_client_group_member_titles(group_id)?;
+    if members.is_empty() {
+        return Ok(());
+    }
+
+    let windows = state.window_service.enumerate_windows();
+    let foreground_pid = state.window_service.foreground_window_pid();
+    let current_title = windows
+        .iter()
+        .find(|w| Some(w.pid) == foreground_pid)
+        .map(|w| w.title.clone());
+
+    let step = if direction.eq_ignore_ascii_case("backward") {
+        -1isize
+    } else {
+        1isize
+    };
+
+    let current_index = current_title
+        .as_ref()
+        .and_then(|title| members.iter().position(|m| m == title))
+        .unwrap_or(0) as isize;
+    let next_index = (current_index + step).rem_euclid(members.len() as isize) as usize;
+    let next_title = &members[next_index];
+
+    state.window_service.activate_window_by_title(next_title)?;
+    Ok(())
+}
+
+#[tauri::command]
 fn get_mumble_links(state: State<'_, AppState>) -> Result<Vec<MumbleLink>, String> {
     state.db.get_mumble_links()
 }
@@ -210,10 +269,25 @@ fn eve_profiles_list(state: State<'_, AppState>) -> Result<Vec<String>, String> 
     Ok(state.eve_tools.list_profiles())
 }
 
+#[tauri::command]
+fn activate_window_by_pid(state: State<'_, AppState>, pid: u32) -> Result<(), String> {
+    state.window_service.activate_window_by_pid(pid)
+}
+
 pub fn run() {
     let state = AppState::new().expect("failed to initialize app state");
     tauri::Builder::default()
         .manage(state)
+        .setup(|app| {
+            let state = app.state::<AppState>();
+            state.thumbnail_service.start(
+                app.handle().clone(),
+                state.db.clone(),
+                state.window_service.clone(),
+                state.dwm.clone(),
+            );
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             health,
             get_profiles,
@@ -229,6 +303,8 @@ pub fn run() {
             get_thumbnail_settings,
             save_thumbnail_setting,
             get_client_groups,
+            update_client_group_hotkeys,
+            cycle_client_group,
             get_mumble_links,
             get_mumble_server_groups,
             get_app_setting,
@@ -236,7 +312,8 @@ pub fn run() {
             hotkeys_capture_start,
             hotkeys_capture_stop,
             grid_apply_layout,
-            eve_profiles_list
+            eve_profiles_list,
+            activate_window_by_pid
         ])
         .run(tauri::generate_context!())
         .expect("failed to run tauri application");

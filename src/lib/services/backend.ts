@@ -52,6 +52,20 @@ export const backend = {
   getClientGroups(profileId: number): Promise<ClientGroup[]> {
     return invoke("get_client_groups", { profileId });
   },
+  updateClientGroupHotkeys(
+    groupId: number,
+    cycleForwardHotkey: string,
+    cycleBackwardHotkey: string
+  ): Promise<void> {
+    return invoke("update_client_group_hotkeys", {
+      groupId,
+      cycleForwardHotkey,
+      cycleBackwardHotkey
+    });
+  },
+  cycleClientGroup(groupId: number, direction: "forward" | "backward"): Promise<void> {
+    return invoke("cycle_client_group", { groupId, direction });
+  },
   getMumbleLinks(): Promise<MumbleLink[]> {
     return invoke("get_mumble_links");
   },
@@ -74,6 +88,9 @@ export const backend = {
   },
   gridApplyLayout(): Promise<void> {
     return invoke("grid_apply_layout");
+  },
+  activateWindowByPid(pid: number): Promise<void> {
+    return invoke("activate_window_by_pid", { pid });
   },
   eveProfilesList(): Promise<string[]> {
     return invoke("eve_profiles_list");

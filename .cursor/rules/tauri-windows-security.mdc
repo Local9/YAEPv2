@@ -13,3 +13,5 @@ alwaysApply: false
 - Keep native handle lifecycle explicit: register/unregister DWM thumbnails, hooks, and windows predictably.
 - Fail safe on interop errors (log, clean up, continue service loop) rather than crashing the app.
 - Preserve the rule: no direct client interaction other than foreground activation.
+- Never allow mouse/keyboard passthrough from thumbnail surfaces to the source `exefile` window.
+- Thumbnail click behavior must only request foreground activation of the source app.

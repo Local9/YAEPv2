@@ -151,6 +151,15 @@ impl DbService {
 
     pub fn set_active_profile(&self, profile_id: i64) -> Result<(), String> {
         let conn = self.connection()?;
+        let exists: Option<i64> = conn
+            .query_row("SELECT Id FROM Profile WHERE Id = ?1 LIMIT 1", [profile_id], |r| {
+                r.get(0)
+            })
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if exists.is_none() {
+            return Err("Profile not found".to_string());
+        }
         conn.execute("UPDATE Profile SET IsActive = 0", [])
             .map_err(|e| e.to_string())?;
         conn.execute("UPDATE Profile SET IsActive = 1 WHERE Id = ?1", [profile_id])
@@ -170,6 +179,23 @@ impl DbService {
 
     pub fn delete_profile(&self, profile_id: i64) -> Result<(), String> {
         let conn = self.connection()?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM Profile", [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        if count <= 1 {
+            return Err("Cannot delete the last profile".to_string());
+        }
+        let is_active: Option<i64> = conn
+            .query_row(
+                "SELECT Id FROM Profile WHERE Id = ?1 AND IsActive = 1 LIMIT 1",
+                [profile_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if is_active.is_some() {
+            return Err("Cannot delete the active profile".to_string());
+        }
         conn.execute("DELETE FROM Profile WHERE Id = ?1", [profile_id])
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -215,10 +241,17 @@ impl DbService {
     }
 
     pub fn remove_process_to_preview(&self, profile_id: i64, process_name: String) -> Result<(), String> {
+        let normalized = process_name.trim().to_lowercase();
         let conn = self.connection()?;
         conn.execute(
             "DELETE FROM ProcessesToPreview WHERE ProfileId = ?1 AND ProcessName = ?2",
-            params![profile_id, process_name.trim().to_lowercase()],
+            params![profile_id, normalized.clone()],
+        )
+        .map_err(|e| e.to_string())?;
+        // Heuristic cleanup: if a title contains the removed process name, remove that override.
+        conn.execute(
+            "DELETE FROM ThumbnailSettings WHERE ProfileId = ?1 AND lower(WindowTitle) LIKE ?2",
+            params![profile_id, format!("%{normalized}%")],
         )
         .map_err(|e| e.to_string())?;
         Ok(())
@@ -271,6 +304,27 @@ impl DbService {
                 config.height,
                 config.x,
                 config.y,
+                config.opacity,
+                config.focus_border_color,
+                config.focus_border_thickness,
+                if config.show_title_overlay { 1 } else { 0 }
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        // Keep per-window X/Y, but synchronize other values to updated defaults.
+        conn.execute(
+            "UPDATE ThumbnailSettings
+             SET Width = ?2,
+                 Height = ?3,
+                 Opacity = ?4,
+                 FocusBorderColor = ?5,
+                 FocusBorderThickness = ?6,
+                 ShowTitleOverlay = ?7
+             WHERE ProfileId = ?1",
+            params![
+                profile_id,
+                config.width,
+                config.height,
                 config.opacity,
                 config.focus_border_color,
                 config.focus_border_thickness,
@@ -364,6 +418,42 @@ impl DbService {
                     cycle_backward_hotkey: row.get(5)?,
                 })
             })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    pub fn update_client_group_hotkeys(
+        &self,
+        group_id: i64,
+        forward_hotkey: String,
+        backward_hotkey: String,
+    ) -> Result<(), String> {
+        let conn = self.connection()?;
+        conn.execute(
+            "UPDATE ClientGroups
+             SET CycleForwardHotkey = ?1, CycleBackwardHotkey = ?2
+             WHERE Id = ?3",
+            params![forward_hotkey, backward_hotkey, group_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_client_group_member_titles(&self, group_id: i64) -> Result<Vec<String>, String> {
+        let conn = self.connection()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT WindowTitle FROM ClientGroupMembers
+                 WHERE GroupId = ?1
+                 ORDER BY DisplayOrder, WindowTitle",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([group_id], |row| row.get::<_, String>(0))
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {

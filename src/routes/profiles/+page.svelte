@@ -6,6 +6,7 @@
   let profiles = $state<Profile[]>([]);
   let newProfileName = $state("");
   let status = $state("");
+  let error = $state("");
 
   async function refreshProfiles() {
     profiles = await backend.getProfiles();
@@ -13,25 +14,48 @@
 
   async function addProfile() {
     if (!newProfileName.trim()) return;
-    await backend.createProfile(newProfileName.trim());
-    newProfileName = "";
-    await refreshProfiles();
+    try {
+      await backend.createProfile(newProfileName.trim());
+      newProfileName = "";
+      error = "";
+      status = "Profile created";
+      await refreshProfiles();
+    } catch (e) {
+      error = String(e);
+    }
   }
 
   async function setActive(profileId: number) {
-    await backend.setCurrentProfile(profileId);
-    await refreshProfiles();
+    try {
+      await backend.setCurrentProfile(profileId);
+      error = "";
+      status = "Active profile updated";
+      await refreshProfiles();
+    } catch (e) {
+      error = String(e);
+    }
   }
 
   async function saveHotkey(profileId: number, hotkey: string) {
-    await backend.updateProfileHotkey(profileId, hotkey);
-    status = "Hotkey saved";
-    await refreshProfiles();
+    try {
+      await backend.updateProfileHotkey(profileId, hotkey);
+      error = "";
+      status = "Hotkey saved";
+      await refreshProfiles();
+    } catch (e) {
+      error = String(e);
+    }
   }
 
   async function removeProfile(profileId: number) {
-    await backend.deleteProfile(profileId);
-    await refreshProfiles();
+    try {
+      await backend.deleteProfile(profileId);
+      error = "";
+      status = "Profile deleted";
+      await refreshProfiles();
+    } catch (e) {
+      error = String(e);
+    }
   }
 
   onMount(async () => {
@@ -47,6 +71,7 @@
     <button onclick={addProfile}>Add</button>
   </div>
   {#if status}<p>{status}</p>{/if}
+  {#if error}<p style="color:#ff8f8f;">{error}</p>{/if}
   <table style="width:100%; border-collapse: collapse;">
     <thead>
       <tr>

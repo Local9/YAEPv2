@@ -9,6 +9,7 @@
   let settings = $state<ThumbnailSetting[]>([]);
   let windowTitle = $state("");
   let saveMessage = $state("");
+  let error = $state("");
 
   function cloneDefault(): ThumbnailConfig | null {
     if (!defaultConfig) return null;
@@ -25,17 +26,29 @@
 
   async function saveDefault() {
     if (activeProfileId == null || defaultConfig == null) return;
-    await backend.setThumbnailDefaultConfig(activeProfileId, defaultConfig);
-    saveMessage = "Default config saved";
+    try {
+      await backend.setThumbnailDefaultConfig(activeProfileId, defaultConfig);
+      saveMessage = "Default config saved";
+      error = "";
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    }
   }
 
   async function addOrUpdateWindowOverride() {
     if (activeProfileId == null || !windowTitle.trim()) return;
     const config = cloneDefault();
     if (!config) return;
-    await backend.saveThumbnailSetting(activeProfileId, windowTitle.trim(), config);
-    windowTitle = "";
-    await refresh();
+    try {
+      await backend.saveThumbnailSetting(activeProfileId, windowTitle.trim(), config);
+      windowTitle = "";
+      saveMessage = "Override saved";
+      error = "";
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    }
   }
 
   onMount(refresh);
@@ -60,6 +73,7 @@
       {#if saveMessage}<span style="margin-left:0.5rem;">{saveMessage}</span>{/if}
     </div>
   {/if}
+  {#if error}<p style="color:#ff8f8f;">{error}</p>{/if}
 
   <hr style="margin: 1rem 0;" />
   <h3>Per-title override</h3>
