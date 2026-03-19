@@ -1,0 +1,13 @@
+---
+description: Migration context and guardrails for rebuilding YAEP in Tauri + SvelteKit
+alwaysApply: true
+---
+
+# YAEP Tauri + SvelteKit Migration Context
+
+- This repository currently contains the legacy Avalonia/C# implementation; new migration work should target Tauri + SvelteKit unless the user explicitly asks for legacy edits.
+- Preserve product behavior parity from `TAURI_SVELTEKIT_REBUILD_SPEC.md` before redesigning flows.
+- Keep Windows-first assumptions for core preview features (DWM live thumbnails, native hotkeys, foreground activation).
+- Do not interact with EVE clients beyond foreground activation (thumbnail click or hotkey-driven focus switch).
+- Keep SQLite as the source of truth for persisted settings; avoid JSON config files.
+- Prefer incremental migration-safe changes: clear module boundaries, stable command contracts, and explicit compatibility notes.

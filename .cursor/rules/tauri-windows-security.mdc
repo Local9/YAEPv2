@@ -1,0 +1,15 @@
+---
+description: Security and reliability rules for Windows-native Tauri functionality
+globs: "src-tauri/**/*.rs"
+alwaysApply: false
+---
+
+# Windows Security and Reliability
+
+- Validate all external inputs (URLs, process names, paths, hotkey strings) before use.
+- Restrict URL launching to approved schemes and reject shell metacharacter patterns.
+- Normalize and validate filesystem paths to prevent traversal and unsafe writes.
+- For process activation logic, target exact window/process matches and handle missing/closed windows safely.
+- Keep native handle lifecycle explicit: register/unregister DWM thumbnails, hooks, and windows predictably.
+- Fail safe on interop errors (log, clean up, continue service loop) rather than crashing the app.
+- Preserve the rule: no direct client interaction other than foreground activation.

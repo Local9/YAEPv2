@@ -1,0 +1,15 @@
+---
+description: SvelteKit frontend patterns for Tauri desktop UI
+globs: "**/*.{svelte,ts,js}"
+alwaysApply: false
+---
+
+# SvelteKit Frontend Patterns
+
+- Keep Svelte components focused on presentation and user intent; call Tauri commands for native actions.
+- Centralize app state in stores (profiles, thumbnails, groups, links, settings) with typed models matching backend payloads.
+- Prefer event-driven updates (`listen`) over polling when backend emits thumbnail/profile/focus changes.
+- Treat backend data as authoritative; avoid duplicating business logic in components.
+- Use strict TypeScript types for command responses and event payloads.
+- Keep UI interactions deterministic: optimistic updates only when rollback paths are implemented.
+- Keep accessibility and keyboard navigation intact for all settings and management views.
