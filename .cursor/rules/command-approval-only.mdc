@@ -1,0 +1,14 @@
+---
+description: Do not run commands. Provide commands for the user to run, then wait for their response.
+globs: 
+---
+# Command Approval Only
+
+## No Command Execution
+Do not run any shell or terminal commands.
+
+## Provide Commands Instead
+When command-line actions are needed, provide the exact commands for the user to run.
+
+## Wait For User Response
+After providing commands, wait for the user to respond with results or confirmation before continuing.

@@ -1,0 +1,17 @@
+---
+description: Use pnpm as the only package manager in this workspace.
+globs:
+---
+# PNPM Only
+
+## Package Manager
+Use `pnpm` for all dependency and script commands.
+
+## Disallowed Commands
+Do not use `npm`, `yarn`, or `bun` commands in this repository.
+
+## Command Style
+- Install dependencies with `pnpm install`
+- Run scripts with `pnpm <script>` or `pnpm run <script>`
+- Add dependencies with `pnpm add <package>`
+- Add dev dependencies with `pnpm add -D <package>`

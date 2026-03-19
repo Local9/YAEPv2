@@ -1,0 +1,55 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, Segoe UI, system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #0f1115;
+  color: #e6e8ef;
+}
+
+a {
+  color: #8fc2ff;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid #232834;
+  padding: 1rem;
+}
+
+.sidebar h1 {
+  margin-top: 0;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
+
+.sidebar nav {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.content {
+  padding: 1.25rem;
+}
+
+.card {
+  border: 1px solid #232834;
+  border-radius: 8px;
+  padding: 1rem;
+  background: #151923;
+}
