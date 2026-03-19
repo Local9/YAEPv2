@@ -116,3 +116,32 @@ fn normalize_key_token(token: &str) -> Result<String, String> {
     };
     Ok(canonical.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::validate_hotkey_string;
+
+    #[test]
+    fn normalizes_hotkey_with_modifiers() {
+        let result = validate_hotkey_string("control + alt + f13");
+        assert_eq!(result.expect("expected normalized hotkey"), "Ctrl+Alt+F13");
+    }
+
+    #[test]
+    fn allows_single_key_hotkey() {
+        let result = validate_hotkey_string("space");
+        assert_eq!(result.expect("expected normalized hotkey"), "Space");
+    }
+
+    #[test]
+    fn rejects_multiple_non_modifier_keys() {
+        let result = validate_hotkey_string("Ctrl+A+B");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_key() {
+        let result = validate_hotkey_string("Ctrl+Foo");
+        assert!(result.is_err());
+    }
+}

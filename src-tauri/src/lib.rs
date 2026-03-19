@@ -3,12 +3,15 @@ mod dwm;
 mod error;
 mod eve_profile_tools;
 mod hotkeys;
+mod instance_guard;
 mod models;
 mod thumbnail_service;
 mod windows;
 
 use std::sync::Arc;
 use serde::Deserialize;
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, State};
 
 use crate::db::DbService;
@@ -16,8 +19,8 @@ use crate::dwm::DwmService;
 use crate::eve_profile_tools::EveProfileToolsService;
 use crate::hotkeys::HotkeyService;
 use crate::models::{
-    ClientGroup, HealthSnapshot, MumbleLink, MumbleServerGroup, Profile, ThumbnailConfig,
-    ThumbnailSetting,
+    ClientGroup, DrawerSettings, GridLayoutPayload, GridLayoutPreviewItem, HealthSnapshot, MumbleLink,
+    MumbleLinksOverlaySettings, MumbleServerGroup, Profile, ThumbnailConfig, ThumbnailSetting,
 };
 use crate::thumbnail_service::ThumbnailService;
 use crate::windows::WindowService;
@@ -220,8 +223,105 @@ fn get_mumble_links(state: State<'_, AppState>) -> Result<Vec<MumbleLink>, Strin
 }
 
 #[tauri::command]
+fn create_mumble_link(
+    state: State<'_, AppState>,
+    name: String,
+    url: String,
+    display_order: i64,
+    hotkey: String,
+) -> Result<(), String> {
+    let normalized_hotkey = state.hotkeys.validate_hotkey(&hotkey)?;
+    state
+        .db
+        .create_mumble_link(name, url, display_order, normalized_hotkey)
+}
+
+#[tauri::command]
+fn update_mumble_link(
+    state: State<'_, AppState>,
+    link_id: i64,
+    name: String,
+    url: String,
+    display_order: i64,
+    hotkey: String,
+) -> Result<(), String> {
+    let normalized_hotkey = state.hotkeys.validate_hotkey(&hotkey)?;
+    state
+        .db
+        .update_mumble_link(link_id, name, url, display_order, normalized_hotkey)
+}
+
+#[tauri::command]
+fn set_mumble_link_selected(
+    state: State<'_, AppState>,
+    link_id: i64,
+    is_selected: bool,
+) -> Result<(), String> {
+    state.db.set_mumble_link_selected(link_id, is_selected)
+}
+
+#[tauri::command]
+fn delete_mumble_link(state: State<'_, AppState>, link_id: i64) -> Result<(), String> {
+    state.db.delete_mumble_link(link_id)
+}
+
+#[tauri::command]
 fn get_mumble_server_groups(state: State<'_, AppState>) -> Result<Vec<MumbleServerGroup>, String> {
     state.db.get_mumble_server_groups()
+}
+
+#[tauri::command]
+fn create_mumble_server_group(
+    state: State<'_, AppState>,
+    name: String,
+    display_order: i64,
+) -> Result<(), String> {
+    state.db.create_mumble_server_group(name, display_order)
+}
+
+#[tauri::command]
+fn update_mumble_server_group(
+    state: State<'_, AppState>,
+    group_id: i64,
+    name: String,
+    display_order: i64,
+) -> Result<(), String> {
+    state
+        .db
+        .update_mumble_server_group(group_id, name, display_order)
+}
+
+#[tauri::command]
+fn delete_mumble_server_group(state: State<'_, AppState>, group_id: i64) -> Result<(), String> {
+    state.db.delete_mumble_server_group(group_id)
+}
+
+#[tauri::command]
+fn get_mumble_links_overlay_settings(
+    state: State<'_, AppState>,
+) -> Result<MumbleLinksOverlaySettings, String> {
+    state.db.get_mumble_links_overlay_settings()
+}
+
+#[tauri::command]
+fn save_mumble_links_overlay_settings(
+    state: State<'_, AppState>,
+    settings: MumbleLinksOverlaySettings,
+) -> Result<(), String> {
+    state.db.save_mumble_links_overlay_settings(settings)
+}
+
+#[tauri::command]
+fn get_drawer_settings(state: State<'_, AppState>) -> Result<DrawerSettings, String> {
+    state.db.get_drawer_settings()
+}
+
+#[tauri::command]
+fn save_drawer_settings(
+    state: State<'_, AppState>,
+    settings: DrawerSettings,
+) -> Result<(), String> {
+    state.db.save_drawer_settings(settings)
 }
 
 #[tauri::command]
@@ -259,14 +359,73 @@ fn hotkeys_capture_stop(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn grid_apply_layout(state: State<'_, AppState>) -> Result<(), String> {
+fn grid_preview_layout(
+    state: State<'_, AppState>,
+    payload: GridLayoutPayload,
+) -> Result<Vec<GridLayoutPreviewItem>, String> {
+    build_grid_layout_preview(&state, payload)
+}
+
+#[tauri::command]
+fn grid_apply_layout(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    payload: GridLayoutPayload,
+) -> Result<(), String> {
+    let plan = build_grid_layout_preview(&state, payload.clone())?;
+    let existing = state.db.get_thumbnail_settings(payload.profile_id)?;
+
+    state.thumbnail_service.stop();
+    for item in plan {
+        let Some(current) = existing
+            .iter()
+            .find(|setting| setting.window_title == item.window_title)
+        else {
+            continue;
+        };
+        let mut next = current.config.clone();
+        next.width = item.width;
+        next.height = item.height;
+        next.x = clamp_position(item.x);
+        next.y = clamp_position(item.y);
+        state
+            .db
+            .save_thumbnail_setting(payload.profile_id, item.window_title.clone(), next)?;
+    }
+    state.thumbnail_service.start(
+        app_handle,
+        state.db.clone(),
+        state.window_service.clone(),
+        state.dwm.clone(),
+    );
+
     state.window_service.apply_grid_layout();
     Ok(())
 }
 
 #[tauri::command]
 fn eve_profiles_list(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    Ok(state.eve_tools.list_profiles())
+    state.eve_tools.list_profiles()
+}
+
+#[tauri::command]
+fn eve_copy_profile(
+    state: State<'_, AppState>,
+    source_profile: String,
+    new_profile: String,
+) -> Result<(), String> {
+    state.eve_tools.copy_profile(source_profile, new_profile)
+}
+
+#[tauri::command]
+fn eve_copy_character_files(
+    state: State<'_, AppState>,
+    source_profile: String,
+    target_profile: String,
+) -> Result<(), String> {
+    state
+        .eve_tools
+        .copy_character_files(source_profile, target_profile)
 }
 
 #[tauri::command]
@@ -275,8 +434,20 @@ fn activate_window_by_pid(state: State<'_, AppState>, pid: u32) -> Result<(), St
 }
 
 pub fn run() {
-    let state = AppState::new().expect("failed to initialize app state");
-    tauri::Builder::default()
+    if let Err(error) = instance_guard::ensure_single_instance() {
+        eprintln!("single-instance check failed: {error}");
+        return;
+    }
+
+    let state = match AppState::new() {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("failed to initialize app state: {error}");
+            return;
+        }
+    };
+
+    let result = tauri::Builder::default()
         .manage(state)
         .setup(|app| {
             let state = app.state::<AppState>();
@@ -286,6 +457,9 @@ pub fn run() {
                 state.window_service.clone(),
                 state.dwm.clone(),
             );
+            if let Err(error) = setup_tray(app) {
+                eprintln!("tray setup failed: {error}");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -306,15 +480,198 @@ pub fn run() {
             update_client_group_hotkeys,
             cycle_client_group,
             get_mumble_links,
+            create_mumble_link,
+            update_mumble_link,
+            set_mumble_link_selected,
+            delete_mumble_link,
             get_mumble_server_groups,
+            create_mumble_server_group,
+            update_mumble_server_group,
+            delete_mumble_server_group,
+            get_mumble_links_overlay_settings,
+            save_mumble_links_overlay_settings,
+            get_drawer_settings,
+            save_drawer_settings,
             get_app_setting,
             set_app_setting,
             hotkeys_capture_start,
             hotkeys_capture_stop,
+            grid_preview_layout,
             grid_apply_layout,
             eve_profiles_list,
+            eve_copy_profile,
+            eve_copy_character_files,
             activate_window_by_pid
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run tauri application");
+        .run(tauri::generate_context!());
+
+    if let Err(error) = result {
+        eprintln!("failed to run tauri application: {error}");
+    }
+}
+
+fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let state = app.state::<AppState>();
+    let profiles = state.db.get_profiles().unwrap_or_default();
+
+    let mut menu_builder = MenuBuilder::new(app);
+    let show_item = MenuItemBuilder::new("Show")
+        .id("tray.show")
+        .build(app)?;
+    menu_builder = menu_builder.item(&show_item);
+
+    for profile in profiles {
+        let label = if profile.is_active {
+            format!("* {}", profile.name)
+        } else {
+            profile.name
+        };
+        let item = MenuItemBuilder::new(label)
+            .id(format!("tray.profile.{}", profile.id))
+            .build(app)?;
+        menu_builder = menu_builder.item(&item);
+    }
+
+    let exit_item = MenuItemBuilder::new("Exit")
+        .id("tray.exit")
+        .build(app)?;
+    let menu = menu_builder.item(&exit_item).build()?;
+
+    let app_handle = app.handle().clone();
+    let tray = TrayIconBuilder::new()
+        .menu(&menu)
+        .on_menu_event(move |app, event| {
+            let id = event.id.as_ref();
+            if id == "tray.show" {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+                return;
+            }
+            if id == "tray.exit" {
+                app.exit(0);
+                return;
+            }
+            if let Some(profile_suffix) = id.strip_prefix("tray.profile.") {
+                if let Ok(profile_id) = profile_suffix.parse::<i64>() {
+                    let state = app.state::<AppState>();
+                    if state.db.set_active_profile(profile_id).is_ok() {
+                        state.thumbnail_service.stop();
+                        state.thumbnail_service.start(
+                            app_handle.clone(),
+                            state.db.clone(),
+                            state.window_service.clone(),
+                            state.dwm.clone(),
+                        );
+                    }
+                }
+            }
+        })
+        .build(app)?;
+
+    // Keep tray icon alive for app lifetime.
+    std::mem::forget(tray);
+    Ok(())
+}
+
+fn build_grid_layout_preview(
+    state: &State<'_, AppState>,
+    payload: GridLayoutPayload,
+) -> Result<Vec<GridLayoutPreviewItem>, String> {
+    if payload.grid_columns <= 0 {
+        return Err("Grid columns must be greater than zero".to_string());
+    }
+    if payload.grid_cell_width <= 0 {
+        return Err("Grid cell width must be greater than zero".to_string());
+    }
+
+    let mut settings = state.db.get_thumbnail_settings(payload.profile_id)?;
+    if let Some(group_id) = payload.selected_group_id {
+        let titles = state.db.get_client_group_member_titles(group_id)?;
+        settings.retain(|setting| titles.contains(&setting.window_title));
+        settings.sort_by_key(|setting| {
+            titles
+                .iter()
+                .position(|title| title == &setting.window_title)
+                .unwrap_or(usize::MAX)
+        });
+    } else {
+        settings.sort_by(|a, b| {
+            a.config
+                .x
+                .cmp(&b.config.x)
+                .then_with(|| a.window_title.cmp(&b.window_title))
+        });
+    }
+
+    if payload.only_affect_active_thumbnails {
+        let active_titles: Vec<String> = state
+            .window_service
+            .enumerate_windows()
+            .into_iter()
+            .map(|w| w.title)
+            .collect();
+        settings.retain(|setting| active_titles.contains(&setting.window_title));
+    }
+
+    let cell_height = resolve_grid_cell_height(
+        payload.grid_cell_width,
+        payload.grid_cell_height,
+        payload.grid_cell_ratio,
+    )?;
+    let mut preview = Vec::new();
+    for (index, setting) in settings.iter().enumerate() {
+        let col = (index as i64) % payload.grid_columns;
+        let row = (index as i64) / payload.grid_columns;
+        preview.push(GridLayoutPreviewItem {
+            window_title: setting.window_title.clone(),
+            x: payload.grid_start_x + (col * payload.grid_cell_width),
+            y: payload.grid_start_y + (row * cell_height),
+            width: payload.grid_cell_width,
+            height: cell_height,
+        });
+    }
+    Ok(preview)
+}
+
+fn resolve_grid_cell_height(
+    grid_cell_width: i64,
+    grid_cell_height: Option<i64>,
+    grid_cell_ratio: Option<String>,
+) -> Result<i64, String> {
+    if let Some(height) = grid_cell_height {
+        if height > 0 {
+            return Ok(height);
+        }
+        return Err("Grid cell height must be greater than zero".to_string());
+    }
+
+    if let Some(ratio) = grid_cell_ratio {
+        let trimmed = ratio.trim();
+        if trimmed.is_empty() {
+            return Err("Grid ratio cannot be empty".to_string());
+        }
+        let (left, right) = trimmed
+            .split_once(':')
+            .ok_or_else(|| "Grid ratio must use w:h format".to_string())?;
+        let w = left
+            .trim()
+            .parse::<f64>()
+            .map_err(|_| "Invalid ratio width".to_string())?;
+        let h = right
+            .trim()
+            .parse::<f64>()
+            .map_err(|_| "Invalid ratio height".to_string())?;
+        if w <= 0.0 || h <= 0.0 {
+            return Err("Grid ratio values must be greater than zero".to_string());
+        }
+        return Ok(((grid_cell_width as f64) * (h / w)).round() as i64);
+    }
+
+    Ok(300)
+}
+
+fn clamp_position(value: i64) -> i64 {
+    value.clamp(-10_000, 31_000)
 }

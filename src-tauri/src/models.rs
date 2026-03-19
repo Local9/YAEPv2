@@ -67,3 +67,50 @@ pub struct MumbleLink {
     pub is_selected: bool,
     pub hotkey: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MumbleLinksOverlaySettings {
+    pub always_on_top: bool,
+    pub x: i64,
+    pub y: i64,
+    pub width: i64,
+    pub height: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DrawerSettings {
+    pub screen_index: i64,
+    pub hardware_id: String,
+    pub side: String,
+    pub width: i64,
+    pub height: i64,
+    pub is_visible: bool,
+    pub is_enabled: bool,
+    pub selected_mumble_server_group_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GridLayoutPayload {
+    pub profile_id: i64,
+    pub grid_cell_width: i64,
+    pub grid_cell_height: Option<i64>,
+    pub grid_cell_ratio: Option<String>,
+    pub grid_start_x: i64,
+    pub grid_start_y: i64,
+    pub grid_columns: i64,
+    pub selected_group_id: Option<i64>,
+    pub only_affect_active_thumbnails: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GridLayoutPreviewItem {
+    pub window_title: String,
+    pub x: i64,
+    pub y: i64,
+    pub width: i64,
+    pub height: i64,
+}

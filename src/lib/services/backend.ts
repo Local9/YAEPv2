@@ -1,8 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ClientGroup,
+  DrawerSettings,
   HealthSnapshot,
+  GridLayoutPayload,
+  GridLayoutPreviewItem,
   MumbleLink,
+  MumbleLinksOverlaySettings,
   MumbleServerGroup,
   Profile,
   ThumbnailConfig,
@@ -69,8 +73,47 @@ export const backend = {
   getMumbleLinks(): Promise<MumbleLink[]> {
     return invoke("get_mumble_links");
   },
+  createMumbleLink(name: string, url: string, displayOrder: number, hotkey: string): Promise<void> {
+    return invoke("create_mumble_link", { name, url, displayOrder, hotkey });
+  },
+  updateMumbleLink(
+    linkId: number,
+    name: string,
+    url: string,
+    displayOrder: number,
+    hotkey: string
+  ): Promise<void> {
+    return invoke("update_mumble_link", { linkId, name, url, displayOrder, hotkey });
+  },
+  setMumbleLinkSelected(linkId: number, isSelected: boolean): Promise<void> {
+    return invoke("set_mumble_link_selected", { linkId, isSelected });
+  },
+  deleteMumbleLink(linkId: number): Promise<void> {
+    return invoke("delete_mumble_link", { linkId });
+  },
   getMumbleServerGroups(): Promise<MumbleServerGroup[]> {
     return invoke("get_mumble_server_groups");
+  },
+  createMumbleServerGroup(name: string, displayOrder: number): Promise<void> {
+    return invoke("create_mumble_server_group", { name, displayOrder });
+  },
+  updateMumbleServerGroup(groupId: number, name: string, displayOrder: number): Promise<void> {
+    return invoke("update_mumble_server_group", { groupId, name, displayOrder });
+  },
+  deleteMumbleServerGroup(groupId: number): Promise<void> {
+    return invoke("delete_mumble_server_group", { groupId });
+  },
+  getMumbleLinksOverlaySettings(): Promise<MumbleLinksOverlaySettings> {
+    return invoke("get_mumble_links_overlay_settings");
+  },
+  saveMumbleLinksOverlaySettings(settings: MumbleLinksOverlaySettings): Promise<void> {
+    return invoke("save_mumble_links_overlay_settings", { settings });
+  },
+  getDrawerSettings(): Promise<DrawerSettings> {
+    return invoke("get_drawer_settings");
+  },
+  saveDrawerSettings(settings: DrawerSettings): Promise<void> {
+    return invoke("save_drawer_settings", { settings });
   },
   getAppSetting(key: string): Promise<string | null> {
     return invoke("get_app_setting", { key });
@@ -86,13 +129,22 @@ export const backend = {
   hotkeysCaptureStop(): Promise<void> {
     return invoke("hotkeys_capture_stop");
   },
-  gridApplyLayout(): Promise<void> {
-    return invoke("grid_apply_layout");
+  gridPreviewLayout(payload: GridLayoutPayload): Promise<GridLayoutPreviewItem[]> {
+    return invoke("grid_preview_layout", { payload });
+  },
+  gridApplyLayout(payload: GridLayoutPayload): Promise<void> {
+    return invoke("grid_apply_layout", { payload });
   },
   activateWindowByPid(pid: number): Promise<void> {
     return invoke("activate_window_by_pid", { pid });
   },
   eveProfilesList(): Promise<string[]> {
     return invoke("eve_profiles_list");
+  },
+  eveCopyProfile(sourceProfile: string, newProfile: string): Promise<void> {
+    return invoke("eve_copy_profile", { sourceProfile, newProfile });
+  },
+  eveCopyCharacterFiles(sourceProfile: string, targetProfile: string): Promise<void> {
+    return invoke("eve_copy_character_files", { sourceProfile, targetProfile });
   }
 };
