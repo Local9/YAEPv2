@@ -184,6 +184,28 @@ pub fn sync_overlay_bounds_win(
     let _ = win.set_ignore_cursor_events(true);
 }
 
+pub fn overlay_state_payload(
+    overlay_id: &str,
+    pid: u32,
+    focused: bool,
+    config: &ThumbnailConfig,
+    window_title: &str,
+) -> ThumbnailOverlayStatePayload {
+    let display_title = window_title
+        .strip_prefix("EVE - ")
+        .unwrap_or(window_title)
+        .to_string();
+    ThumbnailOverlayStatePayload {
+        overlay_id: overlay_id.to_string(),
+        pid,
+        focused,
+        focus_border_color: config.focus_border_color.clone(),
+        focus_border_thickness: config.focus_border_thickness,
+        show_title_overlay: config.show_title_overlay,
+        title: display_title,
+    }
+}
+
 pub fn emit_overlay_state(
     app: &AppHandle,
     overlay_label: &str,
@@ -196,18 +218,6 @@ pub fn emit_overlay_state(
     if overlay_label.is_empty() {
         return;
     }
-    let display_title = window_title
-        .strip_prefix("EVE - ")
-        .unwrap_or(window_title)
-        .to_string();
-    let payload = ThumbnailOverlayStatePayload {
-        overlay_id: overlay_id.to_string(),
-        pid,
-        focused,
-        focus_border_color: config.focus_border_color.clone(),
-        focus_border_thickness: config.focus_border_thickness,
-        show_title_overlay: config.show_title_overlay,
-        title: display_title,
-    };
+    let payload = overlay_state_payload(overlay_id, pid, focused, config, window_title);
     let _ = app.emit_to(overlay_label, "thumbnail-overlay:state", payload);
 }

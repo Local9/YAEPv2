@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
   type Payload = {
@@ -20,19 +21,34 @@
   let showTitleOverlay = $state(false);
   let title = $state("");
 
+  function applyPayload(p: Payload) {
+    if (p.overlayId !== overlayId) return;
+    focused = p.focused;
+    focusBorderColor = p.focusBorderColor;
+    focusBorderThickness = Number(p.focusBorderThickness);
+    showTitleOverlay = p.showTitleOverlay;
+    title = p.title;
+  }
+
   onMount(() => {
     const u = new URL(window.location.href);
     overlayId = u.searchParams.get("overlayId") ?? "";
     pid = Number(u.searchParams.get("pid") ?? 0);
 
+    void (async () => {
+      try {
+        const initial = await invoke<Payload | null>("get_thumbnail_overlay_state", {
+          overlayId,
+        });
+        if (initial) applyPayload(initial);
+      } catch {
+        /* dev server / no Tauri */
+      }
+    })();
+
     let unlisten: UnlistenFn | undefined;
     const p = listen<Payload>("thumbnail-overlay:state", (event) => {
-      if (event.payload.overlayId !== overlayId) return;
-      focused = event.payload.focused;
-      focusBorderColor = event.payload.focusBorderColor;
-      focusBorderThickness = Number(event.payload.focusBorderThickness);
-      showTitleOverlay = event.payload.showTitleOverlay;
-      title = event.payload.title;
+      applyPayload(event.payload);
     });
     p.then((u) => {
       unlisten = u;

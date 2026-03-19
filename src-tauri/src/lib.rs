@@ -21,6 +21,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::db::DbService;
 use crate::dwm::DwmService;
+use crate::thumbnail_webview_overlay::ThumbnailOverlayStatePayload;
 use crate::eve_profile_tools::EveProfileToolsService;
 use crate::hotkeys::HotkeyService;
 use crate::models::{
@@ -502,6 +503,14 @@ fn activate_window_by_pid(state: State<'_, AppState>, pid: u32) -> Result<(), St
     state.window_service.activate_window_by_pid(pid)
 }
 
+#[tauri::command]
+fn get_thumbnail_overlay_state(
+    state: State<'_, AppState>,
+    overlay_id: String,
+) -> Option<ThumbnailOverlayStatePayload> {
+    state.dwm.snapshot_thumbnail_overlay_state(&overlay_id)
+}
+
 pub fn run() {
     diag::install_panic_hook();
     diag::trace("boot", "run() entered");
@@ -600,7 +609,8 @@ pub fn run() {
             eve_copy_profile,
             eve_copy_character_files,
             eve_fetch_character_name,
-            activate_window_by_pid
+            activate_window_by_pid,
+            get_thumbnail_overlay_state
         ])
         .run(tauri::generate_context!());
 

@@ -7,7 +7,8 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::Graphics::Dwm::{
     DwmRegisterThumbnail, DwmUnregisterThumbnail, DwmUpdateThumbnailProperties,
-    DWM_THUMBNAIL_PROPERTIES, DWM_TNP_OPACITY, DWM_TNP_RECTDESTINATION, DWM_TNP_VISIBLE,
+    DWM_THUMBNAIL_PROPERTIES, DWM_TNP_OPACITY, DWM_TNP_RECTDESTINATION,
+    DWM_TNP_SOURCECLIENTAREAONLY, DWM_TNP_VISIBLE,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetCapture, GetKeyState, ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE,
@@ -49,6 +50,13 @@ struct DwmThumbnailPropertiesAbi {
     f_visible: i32,
     f_source_client_area_only: i32,
 }
+
+/// `DwmUpdateThumbnailProperties` mask: destination rect (required for layout) plus
+/// `DWM_TNP_OPACITY` (0x4), `DWM_TNP_VISIBLE` (0x8), `DWM_TNP_SOURCECLIENTAREAONLY` (0x10).
+const DWM_THUMBNAIL_UPDATE_FLAGS: u32 = DWM_TNP_RECTDESTINATION
+    | DWM_TNP_OPACITY
+    | DWM_TNP_VISIBLE
+    | DWM_TNP_SOURCECLIENTAREAONLY;
 
 const MIN_THUMB_W: i32 = 192;
 const MIN_THUMB_H: i32 = 108;
@@ -253,6 +261,48 @@ impl DwmService {
     pub fn set_focused_thumbnail(&self, focused_pid: Option<u32>) {
         let inner = self.inner.clone();
         self.run_on_main(move || set_focused_thumbnail_locked(&inner, focused_pid));
+    }
+
+    /// Current overlay payload for a thumbnail (for webview hydration if the first `emit` was missed).
+    pub fn snapshot_thumbnail_overlay_state(
+        &self,
+        overlay_id: &str,
+    ) -> Option<crate::thumbnail_webview_overlay::ThumbnailOverlayStatePayload> {
+        let inner = self.inner.clone();
+        let overlay_id = overlay_id.to_string();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let app = self
+            .inner
+            .app_handle
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())?;
+        if app
+            .run_on_main_thread(move || {
+                let out = inner
+                    .runtime
+                    .lock()
+                    .ok()
+                    .and_then(|s| {
+                        s.iter().find(|(_, e)| e.overlay_id == overlay_id).map(
+                            |(pid, e)| {
+                                thumbnail_webview_overlay::overlay_state_payload(
+                                    overlay_id.as_str(),
+                                    *pid,
+                                    e.is_focused,
+                                    &e.config,
+                                    &e.window_title,
+                                )
+                            },
+                        )
+                    });
+                let _ = tx.send(out);
+            })
+            .is_err()
+        {
+            return None;
+        }
+        rx.recv().ok().flatten()
     }
 }
 
@@ -723,13 +773,13 @@ fn update_thumbnail_properties_with_opacity(
     }
     let op = opacity_byte(config_opacity, pointer_over_thumbnail);
     let props = DwmThumbnailPropertiesAbi {
-        dw_flags: DWM_TNP_VISIBLE | DWM_TNP_RECTDESTINATION | DWM_TNP_OPACITY,
+        dw_flags: DWM_THUMBNAIL_UPDATE_FLAGS,
         rc_destination: rect,
         rc_source: RECT::default(),
         opacity: op,
         _pad: [0; 3],
         f_visible: 1,
-        f_source_client_area_only: 0,
+        f_source_client_area_only: 1,
     };
     let _ = unsafe {
         DwmUpdateThumbnailProperties(
