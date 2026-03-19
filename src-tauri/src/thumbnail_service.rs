@@ -70,6 +70,8 @@ impl ThumbnailService {
             stop_flag
         };
 
+        dwm.set_app_handle(app_handle.clone());
+
         let monitor_state = self.state.clone();
         let monitor_stop = stop_flag.clone();
         let monitor_app = app_handle.clone();
