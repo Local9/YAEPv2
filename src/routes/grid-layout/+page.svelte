@@ -1,7 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { backend } from "$services/backend";
-  import type { GridLayoutPayload, GridLayoutPreviewItem, Profile } from "$models/domain";
+  import type {
+    GridLayoutPayload,
+    GridLayoutPreviewItem,
+    MonitorInfoDto,
+    Profile
+  } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
@@ -22,6 +27,9 @@
   let gridStartY = $state(100);
   let gridColumns = $state(3);
   let onlyAffectActiveThumbnails = $state(false);
+  let monitors = $state<MonitorInfoDto[]>([]);
+  /** Empty string = no monitor offset / clamp */
+  let selectedMonitorIndex = $state("");
   let preview = $state<GridLayoutPreviewItem[]>([]);
   let status = $state("");
   let error = $state("");
@@ -40,13 +48,20 @@
       gridStartY,
       gridColumns,
       selectedGroupId: null,
-      onlyAffectActiveThumbnails
+      onlyAffectActiveThumbnails,
+      selectedMonitorIndex:
+        selectedMonitorIndex === "" ? null : Number.parseInt(selectedMonitorIndex, 10)
     };
   }
 
   async function loadContext() {
     profiles = await backend.getProfiles();
     activeProfileId = profiles.find((p) => p.isActive)?.id ?? null;
+    try {
+      monitors = await backend.listMonitors();
+    } catch {
+      monitors = [];
+    }
   }
 
   async function generatePreview() {
@@ -86,6 +101,20 @@
     <label>Columns <Input type="number" bind:value={gridColumns} /></label>
     <label>Start X <Input type="number" bind:value={gridStartX} /></label>
     <label>Start Y <Input type="number" bind:value={gridStartY} /></label>
+    <label style="grid-column: span 3;">
+      Monitor
+      <select
+        bind:value={selectedMonitorIndex}
+        style="width:100%; margin-top:0.25rem; padding:0.35rem;"
+      >
+        <option value="">All / default origin</option>
+        {#each monitors as m (m.index)}
+          <option value={String(m.index)}>
+            {m.index}: {m.name || "Display"}{m.isPrimary ? " (primary)" : ""}
+          </option>
+        {/each}
+      </select>
+    </label>
     <label style="display:flex; align-items:center; gap:0.5rem; margin-top:1.4rem;">
       <input type="checkbox" bind:checked={onlyAffectActiveThumbnails} />
       Only active thumbnails

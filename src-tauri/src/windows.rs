@@ -5,19 +5,26 @@ pub struct WindowSnapshot {
     pub title: String,
 }
 
+use crate::dwm::DwmService;
+
 #[derive(Default)]
 pub struct WindowService;
 
 impl WindowService {
-    pub fn apply_grid_layout(&self) {}
+    pub fn apply_grid_layout(&self, dwm: &DwmService) {
+        dwm.sync_thumbnail_graph();
+    }
 
     #[cfg(target_os = "windows")]
     pub fn activate_window_by_pid(&self, target_pid: u32) -> Result<(), String> {
         use std::ffi::c_void;
-        use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+        use windows::core::BOOL;
+        use windows::Win32::Foundation::{HWND, LPARAM};
+        use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+        use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
         use windows::Win32::UI::WindowsAndMessaging::{
-            EnumWindows, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow, ShowWindow,
-            SW_RESTORE,
+            EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+            SetForegroundWindow, ShowWindow, SW_RESTORE,
         };
 
         #[derive(Default)]
@@ -60,7 +67,19 @@ impl WindowService {
             if IsIconic(hwnd).as_bool() {
                 let _ = ShowWindow(hwnd, SW_RESTORE);
             }
-            let _ = SetForegroundWindow(hwnd);
+            let fg = GetForegroundWindow();
+            if !fg.is_invalid() {
+                let mut fg_tid = 0u32;
+                GetWindowThreadProcessId(fg, Some(&mut fg_tid));
+                let cur_tid = GetCurrentThreadId();
+                let _ = AttachThreadInput(cur_tid, fg_tid, true);
+                let _ = SetForegroundWindow(hwnd);
+                let _ = SetFocus(Some(hwnd));
+                let _ = AttachThreadInput(cur_tid, fg_tid, false);
+            } else {
+                let _ = SetForegroundWindow(hwnd);
+                let _ = SetFocus(Some(hwnd));
+            }
         }
         Ok(())
     }
@@ -81,7 +100,8 @@ impl WindowService {
 
     #[cfg(target_os = "windows")]
     pub fn enumerate_windows(&self) -> Vec<WindowSnapshot> {
-        use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+        use windows::core::BOOL;
+        use windows::Win32::Foundation::{HWND, LPARAM};
         use windows::Win32::UI::WindowsAndMessaging::{
             EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
         };

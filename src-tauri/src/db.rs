@@ -336,6 +336,39 @@ impl DbService {
         Ok(())
     }
 
+    /// Per-window override if present, otherwise profile default config.
+    pub fn resolve_thumbnail_config(
+        &self,
+        profile_id: i64,
+        window_title: &str,
+    ) -> Result<ThumbnailConfig, String> {
+        let conn = self.connection()?;
+        let row = conn
+            .query_row(
+                "SELECT Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay
+                 FROM ThumbnailSettings WHERE ProfileId = ?1 AND WindowTitle = ?2",
+                params![profile_id, window_title],
+                |row| {
+                    Ok(ThumbnailConfig {
+                        width: row.get(0)?,
+                        height: row.get(1)?,
+                        x: row.get(2)?,
+                        y: row.get(3)?,
+                        opacity: row.get(4)?,
+                        focus_border_color: row.get(5)?,
+                        focus_border_thickness: row.get(6)?,
+                        show_title_overlay: row.get::<_, i64>(7)? == 1,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if let Some(config) = row {
+            return Ok(config);
+        }
+        self.get_thumbnail_default_config(profile_id)
+    }
+
     pub fn get_thumbnail_settings(&self, profile_id: i64) -> Result<Vec<ThumbnailSetting>, String> {
         let conn = self.connection()?;
         let mut stmt = conn
@@ -455,6 +488,39 @@ impl DbService {
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([group_id], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    pub fn get_mumble_links_for_server_group(
+        &self,
+        group_id: i64,
+    ) -> Result<Vec<MumbleLink>, String> {
+        let conn = self.connection()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT m.Id, m.Name, m.Url, m.DisplayOrder, m.IsSelected, m.Hotkey
+                 FROM MumbleLinks m
+                 INNER JOIN MumbleLinkGroups g ON g.LinkId = m.Id
+                 WHERE g.GroupId = ?1
+                 ORDER BY m.DisplayOrder, m.Name",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([group_id], |row| {
+                Ok(MumbleLink {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    url: row.get(2)?,
+                    display_order: row.get(3)?,
+                    is_selected: row.get::<_, i64>(4)? == 1,
+                    hotkey: row.get(5)?,
+                })
+            })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {

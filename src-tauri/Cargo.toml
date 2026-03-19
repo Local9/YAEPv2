@@ -14,16 +14,22 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+url = "2.5"
+uuid = { version = "1.11", features = ["v4"] }
 tauri = { version = "2", features = ["tray-icon"] }
 thiserror = "2.0"
 tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "time"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 sysinfo = "0.33"
-windows = { version = "0.58", features = [
+opener = "0.7"
+ureq = { version = "2.12", default-features = false, features = ["json"] }
+windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Security",
   "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Input_KeyboardAndMouse",
   "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
+  "Win32_System_LibraryLoader",
   "Win32_System_Threading"
 ] }

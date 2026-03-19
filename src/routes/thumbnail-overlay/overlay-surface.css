@@ -1,0 +1,9 @@
+/* Loaded only for this route; overrides root app.css + Tailwind @layer base on body. */
+html,
+body {
+  margin: 0 !important;
+  padding: 0 !important;
+  min-height: 100% !important;
+  background: transparent !important;
+  background-color: transparent !important;
+}

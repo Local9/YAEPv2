@@ -2,8 +2,19 @@
 pub struct HotkeyService;
 
 impl HotkeyService {
-    pub fn capture_start(&self, _capture_type: String, _target_id: Option<i64>) {}
-    pub fn capture_stop(&self) {}
+    pub fn capture_start(&self, capture_type: String, target_id: Option<i64>) {
+        #[cfg(target_os = "windows")]
+        crate::global_hotkeys::begin_hotkey_capture(capture_type, target_id);
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (capture_type, target_id);
+        }
+    }
+
+    pub fn capture_stop(&self) {
+        #[cfg(target_os = "windows")]
+        crate::global_hotkeys::end_hotkey_capture();
+    }
 
     pub fn validate_hotkey(&self, hotkey: &str) -> Result<String, String> {
         validate_hotkey_string(hotkey)

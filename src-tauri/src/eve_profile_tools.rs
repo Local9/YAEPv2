@@ -1,12 +1,27 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde_json::Value;
 use sysinfo::{ProcessesToUpdate, System};
 
 #[derive(Default)]
 pub struct EveProfileToolsService;
 
 impl EveProfileToolsService {
+    /// Public ESI: character name by ID (no auth).
+    pub fn fetch_character_name(&self, character_id: u64) -> Result<String, String> {
+        let url = format!("https://esi.evetech.net/latest/characters/{character_id}/");
+        let v: Value = ureq::get(&url)
+            .call()
+            .map_err(|e| e.to_string())?
+            .into_json()
+            .map_err(|e| e.to_string())?;
+        v.get("name")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| "ESI response missing name".to_string())
+    }
+
     pub fn list_profiles(&self) -> Result<Vec<String>, String> {
         let mut out = Vec::new();
         let base = self.eve_local_base_dir()?;

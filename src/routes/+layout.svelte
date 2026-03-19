@@ -1,6 +1,10 @@
 <script lang="ts">
   import "../app.css";
 
+  const isThumbnailOverlay =
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/thumbnail-overlay");
+
   const sections = [
     { href: "/", label: "Dashboard" },
     { href: "/profiles", label: "Profiles" },
@@ -14,16 +18,20 @@
   ];
 </script>
 
-<div class="shell">
-  <aside class="sidebar">
-    <h1>YAEP Rust</h1>
-    <nav>
-      {#each sections as section (section.href)}
-        <a href={section.href}>{section.label}</a>
-      {/each}
-    </nav>
-  </aside>
-  <main class="content">
-    <slot />
-  </main>
-</div>
+{#if isThumbnailOverlay}
+  <slot />
+{:else}
+  <div class="shell">
+    <aside class="sidebar">
+      <h1>YAEP Rust</h1>
+      <nav>
+        {#each sections as section (section.href)}
+          <a href={section.href}>{section.label}</a>
+        {/each}
+      </nav>
+    </aside>
+    <main class="content">
+      <slot />
+    </main>
+  </div>
+{/if}

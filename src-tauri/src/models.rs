@@ -93,6 +93,23 @@ pub struct DrawerSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MonitorInfoDto {
+    pub index: i32,
+    pub name: String,
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+    pub work_left: i32,
+    pub work_top: i32,
+    pub work_right: i32,
+    pub work_bottom: i32,
+    pub is_primary: bool,
+    pub hardware_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GridLayoutPayload {
     pub profile_id: i64,
     pub grid_cell_width: i64,
@@ -103,6 +120,8 @@ pub struct GridLayoutPayload {
     pub grid_columns: i64,
     pub selected_group_id: Option<i64>,
     pub only_affect_active_thumbnails: bool,
+    #[serde(default)]
+    pub selected_monitor_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,12 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ClientGroup,
-  DrawerSettings,
   HealthSnapshot,
   GridLayoutPayload,
   GridLayoutPreviewItem,
+  MonitorInfoDto,
   MumbleLink,
-  MumbleLinksOverlaySettings,
   MumbleServerGroup,
   Profile,
   ThumbnailConfig,
@@ -16,6 +15,9 @@ import type {
 export const backend = {
   health(): Promise<HealthSnapshot> {
     return invoke("health");
+  },
+  listMonitors(): Promise<MonitorInfoDto[]> {
+    return invoke("list_monitors_cmd");
   },
   getProfiles(): Promise<Profile[]> {
     return invoke("get_profiles");
@@ -103,18 +105,6 @@ export const backend = {
   deleteMumbleServerGroup(groupId: number): Promise<void> {
     return invoke("delete_mumble_server_group", { groupId });
   },
-  getMumbleLinksOverlaySettings(): Promise<MumbleLinksOverlaySettings> {
-    return invoke("get_mumble_links_overlay_settings");
-  },
-  saveMumbleLinksOverlaySettings(settings: MumbleLinksOverlaySettings): Promise<void> {
-    return invoke("save_mumble_links_overlay_settings", { settings });
-  },
-  getDrawerSettings(): Promise<DrawerSettings> {
-    return invoke("get_drawer_settings");
-  },
-  saveDrawerSettings(settings: DrawerSettings): Promise<void> {
-    return invoke("save_drawer_settings", { settings });
-  },
   getAppSetting(key: string): Promise<string | null> {
     return invoke("get_app_setting", { key });
   },
@@ -146,5 +136,8 @@ export const backend = {
   },
   eveCopyCharacterFiles(sourceProfile: string, targetProfile: string): Promise<void> {
     return invoke("eve_copy_character_files", { sourceProfile, targetProfile });
+  },
+  eveFetchCharacterName(characterId: number): Promise<string> {
+    return invoke("eve_fetch_character_name", { characterId });
   }
 };

@@ -1,5 +1,10 @@
 mod db;
+mod diag;
 mod dwm;
+mod thumbnail_webview_overlay;
+mod monitors;
+#[cfg(target_os = "windows")]
+mod global_hotkeys;
 mod error;
 mod eve_profile_tools;
 mod hotkeys;
@@ -12,14 +17,15 @@ use std::sync::Arc;
 use serde::Deserialize;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::db::DbService;
 use crate::dwm::DwmService;
 use crate::eve_profile_tools::EveProfileToolsService;
 use crate::hotkeys::HotkeyService;
 use crate::models::{
-    ClientGroup, DrawerSettings, GridLayoutPayload, GridLayoutPreviewItem, HealthSnapshot, MumbleLink,
+    ClientGroup, DrawerSettings, GridLayoutPayload, GridLayoutPreviewItem, HealthSnapshot,
+    MonitorInfoDto, MumbleLink,
     MumbleLinksOverlaySettings, MumbleServerGroup, Profile, ThumbnailConfig, ThumbnailSetting,
 };
 use crate::thumbnail_service::ThumbnailService;
@@ -45,6 +51,11 @@ impl AppState {
             eve_tools: Arc::new(EveProfileToolsService),
         })
     }
+}
+
+#[tauri::command]
+fn list_monitors_cmd() -> Result<Vec<MonitorInfoDto>, String> {
+    Ok(monitors::list_monitors())
 }
 
 #[tauri::command]
@@ -80,6 +91,7 @@ fn set_current_profile(
         state.window_service.clone(),
         state.dwm.clone(),
     );
+    refresh_global_hotkeys();
     Ok(())
 }
 
@@ -90,7 +102,9 @@ fn update_profile_hotkey(
     hotkey: String,
 ) -> Result<(), String> {
     let normalized = state.hotkeys.validate_hotkey(&hotkey)?;
-    state.db.update_profile_hotkey(profile_id, normalized)
+    state.db.update_profile_hotkey(profile_id, normalized)?;
+    refresh_global_hotkeys();
+    Ok(())
 }
 
 #[tauri::command]
@@ -179,14 +193,15 @@ fn update_client_group_hotkeys(
     let backward = state.hotkeys.validate_hotkey(&cycle_backward_hotkey)?;
     state
         .db
-        .update_client_group_hotkeys(group_id, forward, backward)
+        .update_client_group_hotkeys(group_id, forward, backward)?;
+    refresh_global_hotkeys();
+    Ok(())
 }
 
-#[tauri::command]
-fn cycle_client_group(
-    state: State<'_, AppState>,
+pub(crate) fn cycle_client_group_internal(
+    state: &AppState,
     group_id: i64,
-    direction: String,
+    direction: &str,
 ) -> Result<(), String> {
     let members = state.db.get_client_group_member_titles(group_id)?;
     if members.is_empty() {
@@ -218,6 +233,33 @@ fn cycle_client_group(
 }
 
 #[tauri::command]
+fn cycle_client_group(
+    state: State<'_, AppState>,
+    group_id: i64,
+    direction: String,
+) -> Result<(), String> {
+    cycle_client_group_internal(&state, group_id, &direction)
+}
+
+pub(crate) fn open_mumble_link_internal(state: &AppState, link_id: i64) -> Result<(), String> {
+    let links = state.db.get_mumble_links()?;
+    let link = links
+        .into_iter()
+        .find(|l| l.id == link_id)
+        .ok_or_else(|| "Mumble link not found".to_string())?;
+    opener::open(&link.url).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn refresh_global_hotkeys() {
+    global_hotkeys::request_refresh();
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn refresh_global_hotkeys() {}
+
+#[tauri::command]
 fn get_mumble_links(state: State<'_, AppState>) -> Result<Vec<MumbleLink>, String> {
     state.db.get_mumble_links()
 }
@@ -233,7 +275,9 @@ fn create_mumble_link(
     let normalized_hotkey = state.hotkeys.validate_hotkey(&hotkey)?;
     state
         .db
-        .create_mumble_link(name, url, display_order, normalized_hotkey)
+        .create_mumble_link(name, url, display_order, normalized_hotkey)?;
+    refresh_global_hotkeys();
+    Ok(())
 }
 
 #[tauri::command]
@@ -248,7 +292,9 @@ fn update_mumble_link(
     let normalized_hotkey = state.hotkeys.validate_hotkey(&hotkey)?;
     state
         .db
-        .update_mumble_link(link_id, name, url, display_order, normalized_hotkey)
+        .update_mumble_link(link_id, name, url, display_order, normalized_hotkey)?;
+    refresh_global_hotkeys();
+    Ok(())
 }
 
 #[tauri::command]
@@ -257,12 +303,16 @@ fn set_mumble_link_selected(
     link_id: i64,
     is_selected: bool,
 ) -> Result<(), String> {
-    state.db.set_mumble_link_selected(link_id, is_selected)
+    state.db.set_mumble_link_selected(link_id, is_selected)?;
+    refresh_global_hotkeys();
+    Ok(())
 }
 
 #[tauri::command]
 fn delete_mumble_link(state: State<'_, AppState>, link_id: i64) -> Result<(), String> {
-    state.db.delete_mumble_link(link_id)
+    state.db.delete_mumble_link(link_id)?;
+    refresh_global_hotkeys();
+    Ok(())
 }
 
 #[tauri::command]
@@ -308,7 +358,8 @@ fn save_mumble_links_overlay_settings(
     state: State<'_, AppState>,
     settings: MumbleLinksOverlaySettings,
 ) -> Result<(), String> {
-    state.db.save_mumble_links_overlay_settings(settings)
+    state.db.save_mumble_links_overlay_settings(settings)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -321,7 +372,8 @@ fn save_drawer_settings(
     state: State<'_, AppState>,
     settings: DrawerSettings,
 ) -> Result<(), String> {
-    state.db.save_drawer_settings(settings)
+    state.db.save_drawer_settings(settings)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -386,8 +438,20 @@ fn grid_apply_layout(
         let mut next = current.config.clone();
         next.width = item.width;
         next.height = item.height;
-        next.x = clamp_position(item.x);
-        next.y = clamp_position(item.y);
+        let (fx, fy) = if let Some(mi) = payload.selected_monitor_index {
+            monitors::clamp_rect_to_monitor_work_area(
+                mi,
+                item.x as i32,
+                item.y as i32,
+                item.width as i32,
+                item.height as i32,
+            )
+            .unwrap_or((item.x as i32, item.y as i32))
+        } else {
+            (item.x as i32, item.y as i32)
+        };
+        next.x = clamp_position(fx as i64);
+        next.y = clamp_position(fy as i64);
         state
             .db
             .save_thumbnail_setting(payload.profile_id, item.window_title.clone(), next)?;
@@ -399,7 +463,7 @@ fn grid_apply_layout(
         state.dwm.clone(),
     );
 
-    state.window_service.apply_grid_layout();
+    state.window_service.apply_grid_layout(&state.dwm);
     Ok(())
 }
 
@@ -429,15 +493,23 @@ fn eve_copy_character_files(
 }
 
 #[tauri::command]
+fn eve_fetch_character_name(state: State<'_, AppState>, character_id: u64) -> Result<String, String> {
+    state.eve_tools.fetch_character_name(character_id)
+}
+
+#[tauri::command]
 fn activate_window_by_pid(state: State<'_, AppState>, pid: u32) -> Result<(), String> {
     state.window_service.activate_window_by_pid(pid)
 }
 
 pub fn run() {
+    diag::install_panic_hook();
+    diag::trace("boot", "run() entered");
     if let Err(error) = instance_guard::ensure_single_instance() {
         eprintln!("single-instance check failed: {error}");
         return;
     }
+    diag::trace("boot", "single-instance ok");
 
     let state = match AppState::new() {
         Ok(value) => value,
@@ -446,24 +518,50 @@ pub fn run() {
             return;
         }
     };
+    diag::trace("boot", "AppState initialized");
 
     let result = tauri::Builder::default()
         .manage(state)
         .setup(|app| {
-            let state = app.state::<AppState>();
-            state.thumbnail_service.start(
-                app.handle().clone(),
-                state.db.clone(),
-                state.window_service.clone(),
-                state.dwm.clone(),
-            );
+            diag::trace("boot", "tauri setup callback start");
+            let db = {
+                let state = app.state::<AppState>();
+                diag::trace("boot", "thumbnail_service.start begin");
+                state.thumbnail_service.start(
+                    app.handle().clone(),
+                    state.db.clone(),
+                    state.window_service.clone(),
+                    state.dwm.clone(),
+                );
+                diag::trace("boot", "thumbnail_service.start returned");
+                state.db.clone()
+            };
             if let Err(error) = setup_tray(app) {
                 eprintln!("tray setup failed: {error}");
             }
+            diag::trace("boot", "tray setup finished");
+            #[cfg(target_os = "windows")]
+            {
+                diag::trace("boot", "global_hotkeys: set_app_handle + spawn_thread");
+                global_hotkeys::set_app_handle(&app.handle());
+                global_hotkeys::spawn_thread(app.handle().clone());
+                global_hotkeys::request_refresh();
+                diag::trace("boot", "global_hotkeys scheduled");
+            }
+            #[cfg(target_os = "windows")]
+            if let Ok(hidden) = db.get_app_setting("StartHidden".to_string()) {
+                if hidden.is_some_and(|v| v.eq_ignore_ascii_case("true")) {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.hide();
+                    }
+                }
+            }
+            diag::trace("boot", "tauri setup callback complete");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             health,
+            list_monitors_cmd,
             get_profiles,
             create_profile,
             set_current_profile,
@@ -501,6 +599,7 @@ pub fn run() {
             eve_profiles_list,
             eve_copy_profile,
             eve_copy_character_files,
+            eve_fetch_character_name,
             activate_window_by_pid
         ])
         .run(tauri::generate_context!());
@@ -564,6 +663,11 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                             state.window_service.clone(),
                             state.dwm.clone(),
                         );
+                        let _ = app.emit(
+                            "profileChanged",
+                            serde_json::json!({ "profileId": profile_id }),
+                        );
+                        refresh_global_hotkeys();
                     }
                 }
             }
@@ -620,14 +724,18 @@ fn build_grid_layout_preview(
         payload.grid_cell_height,
         payload.grid_cell_ratio,
     )?;
+    let (ox, oy) = payload
+        .selected_monitor_index
+        .and_then(monitors::work_area_offset)
+        .unwrap_or((0, 0));
     let mut preview = Vec::new();
     for (index, setting) in settings.iter().enumerate() {
         let col = (index as i64) % payload.grid_columns;
         let row = (index as i64) / payload.grid_columns;
         preview.push(GridLayoutPreviewItem {
             window_title: setting.window_title.clone(),
-            x: payload.grid_start_x + (col * payload.grid_cell_width),
-            y: payload.grid_start_y + (row * cell_height),
+            x: payload.grid_start_x + (col * payload.grid_cell_width) + ox as i64,
+            y: payload.grid_start_y + (row * cell_height) + oy as i64,
             width: payload.grid_cell_width,
             height: cell_height,
         });

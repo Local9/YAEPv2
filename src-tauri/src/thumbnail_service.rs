@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::time::sleep;
 
 use crate::db::DbService;
+use crate::diag;
 use crate::dwm::DwmService;
 use crate::windows::{WindowService, WindowSnapshot};
 
@@ -70,7 +71,10 @@ impl ThumbnailService {
             stop_flag
         };
 
+        diag::trace("thumbnail", "start(): set_app_handle + set_db");
         dwm.set_app_handle(app_handle.clone());
+        dwm.set_db(db.clone());
+        diag::trace("thumbnail", "start(): spawning monitor + focus tasks");
 
         let monitor_state = self.state.clone();
         let monitor_stop = stop_flag.clone();
@@ -169,6 +173,10 @@ fn refresh_runtime_thumbnails(
                     window_title: thumb.title.clone(),
                 },
             );
+            diag::trace(
+                "thumbnail",
+                &format!("new pid={pid} hwnd=0x{:x} title={}", thumb.hwnd, thumb.title),
+            );
             dwm.register_runtime_thumbnail(*pid, thumb.hwnd, &thumb.title);
             continue;
         }
@@ -183,6 +191,13 @@ fn refresh_runtime_thumbnails(
                         pid: *pid,
                         window_title: thumb.title.clone(),
                     },
+                );
+                diag::trace(
+                    "thumbnail",
+                    &format!(
+                        "refresh pid={pid} hwnd/title change -> re-register hwnd=0x{:x}",
+                        thumb.hwnd
+                    ),
                 );
                 // Keep DWM linkage synchronized if source window changed.
                 dwm.register_runtime_thumbnail(*pid, thumb.hwnd, &thumb.title);

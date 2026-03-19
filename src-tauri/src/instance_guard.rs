@@ -1,7 +1,7 @@
 #[cfg(target_os = "windows")]
 mod windows_guard {
     use std::sync::OnceLock;
-    use windows::Win32::Foundation::{GetLastError, BOOL, ERROR_ALREADY_EXISTS};
+    use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
     use windows::Win32::System::Threading::CreateMutexW;
     use windows::core::PCWSTR;
 
@@ -10,7 +10,7 @@ mod windows_guard {
 
     pub fn ensure_single_instance() -> Result<(), String> {
         let name = to_wide("YAEP_RUST_SINGLE_INSTANCE_MUTEX");
-        let handle = unsafe { CreateMutexW(None, BOOL(0), PCWSTR(name.as_ptr())) }
+        let handle = unsafe { CreateMutexW(None, false, PCWSTR(name.as_ptr())) }
             .map_err(|e| format!("failed to create single-instance mutex: {e}"))?;
 
         let last_error = unsafe { GetLastError() };

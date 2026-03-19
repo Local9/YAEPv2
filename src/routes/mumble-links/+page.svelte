@@ -1,12 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { backend } from "$services/backend";
-  import type {
-    DrawerSettings,
-    MumbleLink,
-    MumbleLinksOverlaySettings,
-    MumbleServerGroup
-  } from "$models/domain";
+  import type { MumbleLink, MumbleServerGroup } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
@@ -21,8 +16,6 @@
 
   let links = $state<MumbleLink[]>([]);
   let groups = $state<MumbleServerGroup[]>([]);
-  let overlay = $state<MumbleLinksOverlaySettings | null>(null);
-  let drawer = $state<DrawerSettings | null>(null);
   let status = $state("");
   let error = $state("");
   let newGroupName = $state("");
@@ -33,8 +26,6 @@
   async function refresh() {
     links = await backend.getMumbleLinks();
     groups = await backend.getMumbleServerGroups();
-    overlay = await backend.getMumbleLinksOverlaySettings();
-    drawer = await backend.getDrawerSettings();
   }
 
   async function addGroup() {
@@ -98,28 +89,6 @@
       status = `${link.name} selection updated`;
       error = "";
       await refresh();
-    } catch (e) {
-      error = String(e);
-    }
-  }
-
-  async function saveOverlay() {
-    if (!overlay) return;
-    try {
-      await backend.saveMumbleLinksOverlaySettings(overlay);
-      status = "Overlay settings saved";
-      error = "";
-    } catch (e) {
-      error = String(e);
-    }
-  }
-
-  async function saveDrawer() {
-    if (!drawer) return;
-    try {
-      await backend.saveDrawerSettings(drawer);
-      status = "Drawer settings saved";
-      error = "";
     } catch (e) {
       error = String(e);
     }
@@ -217,38 +186,4 @@
       {/each}
     </TableBody>
   </Table>
-
-  <h3 style="margin-top:1rem;">Overlay Settings</h3>
-  {#if overlay}
-    <div style="display:grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap:0.5rem;">
-      <label><input type="checkbox" bind:checked={overlay.alwaysOnTop} /> Always On Top</label>
-      <label>X <Input type="number" bind:value={overlay.x} /></label>
-      <label>Y <Input type="number" bind:value={overlay.y} /></label>
-      <label>Width <Input type="number" bind:value={overlay.width} /></label>
-      <label>Height <Input type="number" bind:value={overlay.height} /></label>
-    </div>
-    <Button style="margin-top:0.5rem;" onclick={saveOverlay}>Save Overlay Settings</Button>
-  {/if}
-
-  <h3 style="margin-top:1rem;">Drawer Settings</h3>
-  {#if drawer}
-    <div style="display:grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap:0.5rem;">
-      <label>Screen <Input type="number" bind:value={drawer.screenIndex} /></label>
-      <label>Hardware Id <Input bind:value={drawer.hardwareId} /></label>
-      <label>Side <Input bind:value={drawer.side} /></label>
-      <label>Width <Input type="number" bind:value={drawer.width} /></label>
-      <label>Height <Input type="number" bind:value={drawer.height} /></label>
-      <label><input type="checkbox" bind:checked={drawer.isVisible} /> Visible</label>
-      <label><input type="checkbox" bind:checked={drawer.isEnabled} /> Enabled</label>
-      <label>
-        Selected Group
-        <Input
-          type="number"
-          bind:value={drawer.selectedMumbleServerGroupId}
-          placeholder="(empty for none)"
-        />
-      </label>
-    </div>
-    <Button style="margin-top:0.5rem;" onclick={saveDrawer}>Save Drawer Settings</Button>
-  {/if}
 </section>

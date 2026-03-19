@@ -71,6 +71,21 @@ export type HealthSnapshot = {
   activeProfileId: number | null;
 };
 
+export type MonitorInfoDto = {
+  index: number;
+  name: string;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  workLeft: number;
+  workTop: number;
+  workRight: number;
+  workBottom: number;
+  isPrimary: boolean;
+  hardwareId: string;
+};
+
 export type GridLayoutPayload = {
   profileId: number;
   gridCellWidth: number;
@@ -81,6 +96,7 @@ export type GridLayoutPayload = {
   gridColumns: number;
   selectedGroupId: number | null;
   onlyAffectActiveThumbnails: boolean;
+  selectedMonitorIndex?: number | null;
 };
 
 export type GridLayoutPreviewItem = {
