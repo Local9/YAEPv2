@@ -1,15 +1,29 @@
 ---
-description: SvelteKit frontend patterns for Tauri desktop UI
-globs: "**/*.{svelte,ts,js}"
+description: Svelte 5 + SvelteKit 2 (runes), Tailwind CSS v4, and Tauri UI patterns
+globs: "**/*.{svelte,ts,js,css}"
 alwaysApply: false
 ---
 
-# SvelteKit Frontend Patterns
+# Frontend expertise (SvelteKit + Tailwind)
 
-- Keep Svelte components focused on presentation and user intent; call Tauri commands for native actions.
-- Centralize app state in stores (profiles, thumbnails, groups, links, settings) with typed models matching backend payloads.
-- Prefer event-driven updates (`listen`) over polling when backend emits thumbnail/profile/focus changes.
-- Treat backend data as authoritative; avoid duplicating business logic in components.
-- Use strict TypeScript types for command responses and event payloads.
-- Keep UI interactions deterministic: optimistic updates only when rollback paths are implemented.
-- Keep accessibility and keyboard navigation intact for all settings and management views.
+Act as an expert in **Svelte 5** with **SvelteKit 2**, using **runes** as the default component model, and in **Tailwind CSS v4** (Vite plugin, CSS-first `@import "tailwindcss"`, `@theme`, `@utility`).
+
+## Svelte 5 + SvelteKit 2 (runes)
+
+- Prefer runes over legacy APIs: `$props()`, `$state()`, `$derived()`, `$effect()` only when sync with the outside world is required.
+- Use **snippets** and `{@render ...}` for composition; in layouts and pages use **`LayoutProps` / `PageProps` from `./$types`** and `{@render children?.()}` instead of `<slot />` unless touching legacy code intentionally.
+- Use **`$app/state`** (`page`, etc.) where the project already does; avoid mixing deprecated `$app/stores` patterns in new code.
+- Keep components small: presentation in Svelte, native behavior via Tauri commands and events.
+- Type command responses and event payloads strictly; treat backend data as authoritative.
+
+## Tailwind CSS v4
+
+- Prefer utility classes and design tokens already in the project (`app.css`, theme extensions); use `@apply` sparingly for repeated complex patterns.
+- Follow existing spacing, typography, and color variables (e.g. sidebar tokens) for visual consistency.
+
+## Tauri desktop UI
+
+- Centralize shared app state in stores with models aligned to the Rust command contracts.
+- Prefer event-driven updates (`listen`) over polling when the backend emits changes.
+- Keep interactions deterministic; use optimistic UI only with a clear rollback path.
+- Preserve accessibility and keyboard navigation across settings and management views.

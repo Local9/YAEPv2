@@ -1,10 +1,12 @@
 ---
-description: Security and reliability rules for Windows-native Tauri functionality
+description: Expert Windows security and reliability for Tauri native code (src-tauri)
 globs: "src-tauri/**/*.rs"
 alwaysApply: false
 ---
 
-# Windows Security and Reliability
+# Windows security and reliability (Tauri + Rust)
+
+Apply expert-level judgment for desktop threat models: least privilege, safe defaults, and predictable cleanup on failure.
 
 - Validate all external inputs (URLs, process names, paths, hotkey strings) before use.
 - Restrict URL launching to approved schemes and reject shell metacharacter patterns.
