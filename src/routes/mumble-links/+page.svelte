@@ -11,8 +11,16 @@
     TableCell,
     TableHead,
     TableHeader,
-    TableRow
+    TableRow,
   } from "$lib/components/ui/table";
+  import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
+  import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
+  import LinkIcon from "@lucide/svelte/icons/link";
+  import PlusIcon from "@lucide/svelte/icons/plus";
+  import RadioIcon from "@lucide/svelte/icons/radio";
+  import SaveIcon from "@lucide/svelte/icons/save";
+  import ServerIcon from "@lucide/svelte/icons/server";
+  import Trash2Icon from "@lucide/svelte/icons/trash-2";
 
   let links = $state<MumbleLink[]>([]);
   let groups = $state<MumbleServerGroup[]>([]);
@@ -48,7 +56,7 @@
         newLinkName.trim(),
         newLinkUrl.trim(),
         links.length,
-        newLinkHotkey.trim()
+        newLinkHotkey.trim(),
       );
       newLinkName = "";
       newLinkUrl = "";
@@ -108,82 +116,135 @@
   onMount(refresh);
 </script>
 
-<section class="card">
-  <h2>Mumble Links</h2>
-  <p>Manage links/groups and persisted overlay/drawer settings.</p>
+<section class="rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm">
+  <div class="mb-4 flex items-start gap-3">
+    <RadioIcon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+    <div>
+      <h2 class="text-lg font-semibold tracking-tight">Mumble Links</h2>
+      <p class="mt-1 text-sm text-muted-foreground">
+        Manage links/groups and persisted overlay/drawer settings.
+      </p>
+    </div>
+  </div>
+
   {#if status}
-    <Alert>
+    <Alert class="mt-3 border-primary/30 bg-primary/5">
+      <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
       <AlertTitle>Status</AlertTitle>
       <AlertDescription>{status}</AlertDescription>
     </Alert>
   {/if}
   {#if error}
-    <Alert>
+    <Alert variant="destructive" class="mt-3">
+      <AlertCircleIcon class="size-4" aria-hidden="true" />
       <AlertTitle>Error</AlertTitle>
       <AlertDescription>{error}</AlertDescription>
     </Alert>
   {/if}
 
-  <h3 style="margin-top:1rem;">Server Groups</h3>
-  <div style="display:flex; gap:0.5rem; max-width:480px; margin-bottom:0.5rem;">
-    <Input bind:value={newGroupName} placeholder="Group name" />
-    <Button onclick={addGroup}>Add Group</Button>
+  <div class="mt-6 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+    <ServerIcon class="size-4 shrink-0" aria-hidden="true" />
+    <h3 class="text-base font-semibold text-foreground">Server Groups</h3>
   </div>
-  <Table>
-    <TableHeader>
-      <TableRow>
-        <TableHead>Name</TableHead>
-        <TableHead>Order</TableHead>
-        <TableHead>Actions</TableHead>
-      </TableRow>
-    </TableHeader>
-    <TableBody>
-      {#each groups as group (group.id)}
+  <div class="mt-3 flex max-w-lg flex-wrap items-center gap-2">
+    <Input class="min-w-[12rem] flex-1" bind:value={newGroupName} placeholder="Group name" />
+    <Button onclick={addGroup} class="gap-2">
+      <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
+      Add Group
+    </Button>
+  </div>
+  <div class="mt-3 overflow-x-auto">
+    <Table>
+      <TableHeader>
         <TableRow>
-          <TableCell>{group.name}</TableCell>
-          <TableCell>{group.displayOrder}</TableCell>
-          <TableCell><Button onclick={() => deleteGroup(group.id)}>Delete</Button></TableCell>
+          <TableHead>Name</TableHead>
+          <TableHead>Order</TableHead>
+          <TableHead>Actions</TableHead>
         </TableRow>
-      {/each}
-    </TableBody>
-  </Table>
+      </TableHeader>
+      <TableBody>
+        {#each groups as group (group.id)}
+          <TableRow>
+            <TableCell>{group.name}</TableCell>
+            <TableCell>{group.displayOrder}</TableCell>
+            <TableCell>
+              <Button variant="destructive" size="sm" onclick={() => deleteGroup(group.id)}>
+                <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
+                Delete
+              </Button>
+            </TableCell>
+          </TableRow>
+        {/each}
+      </TableBody>
+    </Table>
+  </div>
 
-  <h3 style="margin-top:1rem;">Links</h3>
-  <div
-    style="display:grid; grid-template-columns: 1fr 1fr 160px auto; gap:0.5rem; margin-bottom:0.5rem;"
-  >
-    <Input bind:value={newLinkName} placeholder="Link name" />
-    <Input bind:value={newLinkUrl} placeholder="mumble://..." />
-    <Input bind:value={newLinkHotkey} placeholder="Ctrl+Alt+M" />
-    <Button onclick={addLink}>Add Link</Button>
+  <div class="mt-8 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+    <LinkIcon class="size-4 shrink-0" aria-hidden="true" />
+    <h3 class="text-base font-semibold text-foreground">Links</h3>
   </div>
-  <Table>
-    <TableHeader>
-      <TableRow>
-        <TableHead>Selected</TableHead>
-        <TableHead>Name</TableHead>
-        <TableHead>URL</TableHead>
-        <TableHead>Hotkey</TableHead>
-        <TableHead>Order</TableHead>
-        <TableHead>Actions</TableHead>
-      </TableRow>
-    </TableHeader>
-    <TableBody>
-      {#each links as link (link.id)}
+  <div
+    class="mt-3 grid max-w-5xl grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_minmax(8rem,1fr)_auto] md:items-end"
+  >
+    <label class="grid gap-1.5 text-sm font-medium">
+      <span class="text-muted-foreground">Name</span>
+      <Input bind:value={newLinkName} placeholder="Link name" />
+    </label>
+    <label class="grid gap-1.5 text-sm font-medium">
+      <span class="text-muted-foreground">URL</span>
+      <Input bind:value={newLinkUrl} placeholder="mumble://..." />
+    </label>
+    <label class="grid gap-1.5 text-sm font-medium">
+      <span class="text-muted-foreground">Hotkey</span>
+      <Input bind:value={newLinkHotkey} placeholder="Ctrl+Alt+M" />
+    </label>
+    <Button onclick={addLink} class="gap-2 md:mb-0">
+      <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
+      Add Link
+    </Button>
+  </div>
+  <div class="mt-4 overflow-x-auto">
+    <Table>
+      <TableHeader>
         <TableRow>
-          <TableCell>
-            <input type="checkbox" checked={link.isSelected} onchange={() => toggleSelected(link)} />
-          </TableCell>
-          <TableCell><Input bind:value={link.name} /></TableCell>
-          <TableCell><Input bind:value={link.url} /></TableCell>
-          <TableCell><Input bind:value={link.hotkey} /></TableCell>
-          <TableCell><Input type="number" bind:value={link.displayOrder} /></TableCell>
-          <TableCell style="display:flex; gap:0.5rem;">
-            <Button onclick={() => saveLink(link)}>Save</Button>
-            <Button onclick={() => deleteLink(link.id)}>Delete</Button>
-          </TableCell>
+          <TableHead>Selected</TableHead>
+          <TableHead>Name</TableHead>
+          <TableHead>URL</TableHead>
+          <TableHead>Hotkey</TableHead>
+          <TableHead>Order</TableHead>
+          <TableHead>Actions</TableHead>
         </TableRow>
-      {/each}
-    </TableBody>
-  </Table>
+      </TableHeader>
+      <TableBody>
+        {#each links as link (link.id)}
+          <TableRow>
+            <TableCell>
+              <input
+                class="size-4 rounded border border-input text-primary focus-visible:ring-2 focus-visible:ring-ring"
+                type="checkbox"
+                checked={link.isSelected}
+                onchange={() => toggleSelected(link)}
+              />
+            </TableCell>
+            <TableCell><Input bind:value={link.name} /></TableCell>
+            <TableCell><Input bind:value={link.url} /></TableCell>
+            <TableCell><Input bind:value={link.hotkey} /></TableCell>
+            <TableCell><Input type="number" bind:value={link.displayOrder} /></TableCell>
+            <TableCell>
+              <div class="flex flex-wrap gap-2">
+                <Button size="sm" onclick={() => saveLink(link)} class="gap-1.5">
+                  <SaveIcon class="size-4 shrink-0" aria-hidden="true" />
+                  Save
+                </Button>
+                <Button variant="destructive" size="sm" onclick={() => deleteLink(link.id)}>
+                  <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
+                  Delete
+                </Button>
+              </div>
+            </TableCell>
+          </TableRow>
+        {/each}
+      </TableBody>
+    </Table>
+  </div>
 </section>

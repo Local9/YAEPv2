@@ -1,7 +1,8 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  plugins: [sveltekit()],
-  clearScreen: false
+  plugins: [tailwindcss(), sveltekit()],
+  clearScreen: false,
 });
