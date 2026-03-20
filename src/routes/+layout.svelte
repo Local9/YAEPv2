@@ -1,5 +1,6 @@
 <script lang="ts">
   import "../app.css";
+  import { ModeWatcher } from "mode-watcher";
   import { page } from "$app/state";
   import type { LayoutProps } from "./$types";
   import CpuIcon from "@lucide/svelte/icons/cpu";
@@ -12,6 +13,7 @@
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import UsersIcon from "@lucide/svelte/icons/users";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+  import ThemeToggle from "$lib/components/theme-toggle.svelte";
 
   let { children }: LayoutProps = $props();
 
@@ -38,6 +40,7 @@
 {#if isThumbnailOverlay}
   {@render children?.()}
 {:else}
+  <ModeWatcher />
   <Sidebar.Provider>
     <Sidebar.Root collapsible="icon" variant="sidebar">
       <Sidebar.Header>
@@ -91,6 +94,7 @@
       <header class="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
         <Sidebar.Trigger />
         <span class="truncate font-semibold md:hidden">YAEP Rust</span>
+        <ThemeToggle />
       </header>
       <div class="flex flex-1 flex-col gap-4 p-4 md:p-6">
         {@render children?.()}

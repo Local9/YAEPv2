@@ -2,7 +2,8 @@
   import { onMount } from "svelte";
   import { backend } from "$services/backend";
   import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
+  import { Checkbox } from "$lib/components/ui/checkbox";
+  import * as Select from "$lib/components/ui/select";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
@@ -70,25 +71,32 @@
 
   <div class="mt-4 grid max-w-3xl gap-3">
     <label class="flex cursor-pointer items-center gap-2 text-sm font-medium">
-      <input
-        class="size-4 rounded border border-input text-primary focus-visible:ring-2 focus-visible:ring-ring"
-        type="checkbox"
-        bind:checked={enableThumbnailDragging}
-      />
+      <Checkbox bind:checked={enableThumbnailDragging} />
       <span class="text-foreground">Enable Thumbnail Dragging</span>
     </label>
     <label class="flex cursor-pointer items-center gap-2 text-sm font-medium">
-      <input
-        class="size-4 rounded border border-input text-primary focus-visible:ring-2 focus-visible:ring-ring"
-        type="checkbox"
-        bind:checked={startHidden}
-      />
+      <Checkbox bind:checked={startHidden} />
       <span class="text-foreground">Start Hidden</span>
     </label>
-    <label class="grid max-w-md gap-1.5 text-sm font-medium">
+    <div class="grid max-w-md gap-1.5 text-sm font-medium">
       <span class="text-muted-foreground">Theme</span>
-      <Input bind:value={theme} placeholder="Dark or Light" />
-    </label>
+      <Select.Root
+        type="single"
+        bind:value={theme}
+        items={[
+          { value: "Dark", label: "Dark" },
+          { value: "Light", label: "Light" },
+        ]}
+      >
+        <Select.Trigger class="w-full">
+          <span data-slot="select-value">{theme}</span>
+        </Select.Trigger>
+        <Select.Content>
+          <Select.Item value="Dark">Dark</Select.Item>
+          <Select.Item value="Light">Light</Select.Item>
+        </Select.Content>
+      </Select.Root>
+    </div>
     <div>
       <Button onclick={save} class="gap-2">
         <SaveIcon class="size-4 shrink-0" aria-hidden="true" />

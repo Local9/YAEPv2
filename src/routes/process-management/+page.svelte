@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import { backend } from "$services/backend";
   import type { Profile } from "$models/domain";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import CpuIcon from "@lucide/svelte/icons/cpu";
   import ListIcon from "@lucide/svelte/icons/list";
@@ -14,15 +16,6 @@
   let newProcessName = $state("");
   let status = $state("");
   let error = $state("");
-
-  const inputClass =
-    "min-w-[10rem] flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-xs";
-
-  const btnPrimary =
-    "inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
-
-  const btnOutline =
-    "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   async function refresh() {
     profiles = await backend.getProfiles();
@@ -81,11 +74,15 @@
   </div>
 
   <div class="mb-3 flex flex-wrap items-center gap-2">
-    <input class={inputClass} bind:value={newProcessName} placeholder="exefile" />
-    <button type="button" class={btnPrimary} onclick={addProcess} disabled={activeProfileId == null}>
+    <Input
+      class="min-w-[10rem] flex-1 sm:max-w-xs"
+      bind:value={newProcessName}
+      placeholder="exefile"
+    />
+    <Button type="button" onclick={addProcess} disabled={activeProfileId == null}>
       <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
       Add process
-    </button>
+    </Button>
   </div>
 
   {#if status}
@@ -105,10 +102,10 @@
       >
         <ListIcon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <code class="min-w-0 flex-1 rounded bg-muted px-2 py-0.5 font-mono text-xs">{process}</code>
-        <button type="button" class={btnOutline} onclick={() => removeProcess(process)}>
+        <Button type="button" variant="outline" onclick={() => removeProcess(process)}>
           <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
           Remove
-        </button>
+        </Button>
       </li>
     {/each}
   </ul>

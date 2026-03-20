@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import { backend } from "$services/backend";
   import type { ClientGroup, Profile } from "$models/domain";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
   import ArrowRightIcon from "@lucide/svelte/icons/arrow-right";
@@ -11,12 +13,6 @@
   let groups = $state<ClientGroup[]>([]);
   let status = $state("");
   let error = $state("");
-
-  const inputClass =
-    "w-full min-w-[10rem] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-  const btnOutline =
-    "inline-flex items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   async function refresh() {
     profiles = await backend.getProfiles();
@@ -94,16 +90,16 @@
             <td class="p-2 align-middle">{group.name}</td>
             <td class="p-2 align-middle">{group.displayOrder}</td>
             <td class="p-2 align-middle">
-              <input
-                class={inputClass}
+              <Input
+                class="min-w-[10rem]"
                 bind:value={group.cycleForwardHotkey}
                 placeholder="Ctrl+Alt+F13"
                 onblur={() => saveHotkeys(group)}
               />
             </td>
             <td class="p-2 align-middle">
-              <input
-                class={inputClass}
+              <Input
+                class="min-w-[10rem]"
                 bind:value={group.cycleBackwardHotkey}
                 placeholder="Ctrl+Alt+F14"
                 onblur={() => saveHotkeys(group)}
@@ -111,14 +107,14 @@
             </td>
             <td class="p-2 align-middle">
               <div class="flex flex-wrap gap-2">
-                <button type="button" class={btnOutline} onclick={() => cycle(group, "forward")}>
+                <Button type="button" variant="outline" onclick={() => cycle(group, "forward")}>
                   <ArrowRightIcon class="size-4 shrink-0" aria-hidden="true" />
                   Cycle Next
-                </button>
-                <button type="button" class={btnOutline} onclick={() => cycle(group, "backward")}>
+                </Button>
+                <Button type="button" variant="outline" onclick={() => cycle(group, "backward")}>
                   <ArrowLeftIcon class="size-4 shrink-0" aria-hidden="true" />
                   Cycle Prev
-                </button>
+                </Button>
               </div>
             </td>
           </tr>

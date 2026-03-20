@@ -8,7 +8,9 @@
     Profile,
   } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
+  import { Checkbox } from "$lib/components/ui/checkbox";
   import { Input } from "$lib/components/ui/input";
+  import * as Select from "$lib/components/ui/select";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import {
     Table,
@@ -39,8 +41,22 @@
   let status = $state("");
   let error = $state("");
 
-  const selectClass =
-    "mt-1.5 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  let monitorTriggerLabel = $derived.by(() => {
+    if (selectedMonitorIndex === "") return "All / default origin";
+    const m = monitors.find((x) => String(x.index) === selectedMonitorIndex);
+    if (!m) return selectedMonitorIndex;
+    return `${m.index}: ${m.name || "Display"}${m.isPrimary ? " (primary)" : ""}`;
+  });
+
+  let monitorSelectItems = $derived<
+    { value: string; label: string }[]
+  >([
+    { value: "", label: "All / default origin" },
+    ...monitors.map((m) => ({
+      value: String(m.index),
+      label: `${m.index}: ${m.name || "Display"}${m.isPrimary ? " (primary)" : ""}`,
+    })),
+  ]);
 
   function buildPayload(): GridLayoutPayload | null {
     if (activeProfileId == null) {
@@ -129,28 +145,32 @@
       <span class="text-muted-foreground">Start Y</span>
       <Input type="number" bind:value={gridStartY} />
     </label>
-    <label class="grid gap-1.5 text-sm font-medium sm:col-span-3">
+    <div class="grid gap-1.5 text-sm font-medium sm:col-span-3">
       <span class="flex items-center gap-1.5 text-muted-foreground">
         <MonitorIcon class="size-3.5 shrink-0" aria-hidden="true" />
         Monitor
       </span>
-      <select class={selectClass} bind:value={selectedMonitorIndex}>
-        <option value="">All / default origin</option>
-        {#each monitors as m (m.index)}
-          <option value={String(m.index)}>
-            {m.index}: {m.name || "Display"}{m.isPrimary ? " (primary)" : ""}
-          </option>
-        {/each}
-      </select>
-    </label>
+      <Select.Root type="single" bind:value={selectedMonitorIndex} items={monitorSelectItems}>
+        <Select.Trigger class="mt-1.5 w-full">
+          <span data-slot="select-value">{monitorTriggerLabel}</span>
+        </Select.Trigger>
+        <Select.Content>
+          <Select.Item value="" label="All / default origin">All / default origin</Select.Item>
+          {#each monitors as m (m.index)}
+            <Select.Item
+              value={String(m.index)}
+              label={`${m.index}: ${m.name || "Display"}${m.isPrimary ? " (primary)" : ""}`}
+            >
+              {m.index}: {m.name || "Display"}{m.isPrimary ? " (primary)" : ""}
+            </Select.Item>
+          {/each}
+        </Select.Content>
+      </Select.Root>
+    </div>
     <label
       class="flex cursor-pointer items-center gap-2 self-end text-sm font-medium sm:col-span-3"
     >
-      <input
-        class="size-4 rounded border border-input text-primary focus-visible:ring-2 focus-visible:ring-ring"
-        type="checkbox"
-        bind:checked={onlyAffectActiveThumbnails}
-      />
+      <Checkbox bind:checked={onlyAffectActiveThumbnails} />
       <span class="text-muted-foreground">Only active thumbnails</span>
     </label>
   </div>

@@ -2,6 +2,9 @@
   import { onMount } from "svelte";
   import { backend } from "$services/backend";
   import type { Profile, ThumbnailConfig, ThumbnailSetting } from "$models/domain";
+  import { Button } from "$lib/components/ui/button";
+  import { Checkbox } from "$lib/components/ui/checkbox";
+  import { Input } from "$lib/components/ui/input";
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import BookmarkIcon from "@lucide/svelte/icons/bookmark";
   import ImageIcon from "@lucide/svelte/icons/image";
@@ -16,9 +19,6 @@
   let windowTitle = $state("");
   let saveMessage = $state("");
   let error = $state("");
-
-  const inputClass =
-    "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   function cloneDefault(): ThumbnailConfig | null {
     if (!defaultConfig) return null;
@@ -84,24 +84,23 @@
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <label class="grid gap-1.5 text-sm font-medium">
         <span class="text-muted-foreground">Width</span>
-        <input class={inputClass} type="number" bind:value={defaultConfig.width} />
+        <Input type="number" bind:value={defaultConfig.width} />
       </label>
       <label class="grid gap-1.5 text-sm font-medium">
         <span class="text-muted-foreground">Height</span>
-        <input class={inputClass} type="number" bind:value={defaultConfig.height} />
+        <Input type="number" bind:value={defaultConfig.height} />
       </label>
       <label class="grid gap-1.5 text-sm font-medium">
         <span class="text-muted-foreground">X</span>
-        <input class={inputClass} type="number" bind:value={defaultConfig.x} />
+        <Input type="number" bind:value={defaultConfig.x} />
       </label>
       <label class="grid gap-1.5 text-sm font-medium">
         <span class="text-muted-foreground">Y</span>
-        <input class={inputClass} type="number" bind:value={defaultConfig.y} />
+        <Input type="number" bind:value={defaultConfig.y} />
       </label>
       <label class="grid gap-1.5 text-sm font-medium">
         <span class="text-muted-foreground">Opacity</span>
-        <input
-          class={inputClass}
+        <Input
           type="number"
           step="0.05"
           min="0.1"
@@ -111,36 +110,24 @@
       </label>
       <label class="grid gap-1.5 text-sm font-medium">
         <span class="text-muted-foreground">Border color</span>
-        <input class={inputClass} bind:value={defaultConfig.focusBorderColor} />
+        <Input bind:value={defaultConfig.focusBorderColor} />
       </label>
       <label class="grid gap-1.5 text-sm font-medium">
         <span class="text-muted-foreground">Border thickness</span>
-        <input
-          class={inputClass}
-          type="number"
-          bind:value={defaultConfig.focusBorderThickness}
-        />
+        <Input type="number" bind:value={defaultConfig.focusBorderThickness} />
       </label>
       <label
         class="flex cursor-pointer items-center gap-2 self-end text-sm font-medium sm:col-span-2 lg:col-span-1"
       >
-        <input
-          class="size-4 rounded border border-input text-primary focus-visible:ring-2 focus-visible:ring-ring"
-          type="checkbox"
-          bind:checked={defaultConfig.showTitleOverlay}
-        />
+        <Checkbox bind:checked={defaultConfig.showTitleOverlay} />
         <span class="text-muted-foreground">Show title</span>
       </label>
     </div>
     <div class="mt-4 flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onclick={saveDefault}
-      >
+      <Button type="button" onclick={saveDefault} class="gap-2">
         <SaveIcon class="size-4 shrink-0" aria-hidden="true" />
         Save default
-      </button>
+      </Button>
       {#if saveMessage}
         <span class="text-sm text-muted-foreground">{saveMessage}</span>
       {/if}
@@ -164,19 +151,15 @@
     <h3 class="text-base font-semibold text-foreground">Per-title override</h3>
   </div>
   <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-    <input
-      class={`${inputClass} sm:max-w-md sm:flex-1`}
+    <Input
+      class="sm:max-w-md sm:flex-1"
       bind:value={windowTitle}
       placeholder="EVE - CharacterName"
     />
-    <button
-      type="button"
-      class="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      onclick={addOrUpdateWindowOverride}
-    >
+    <Button type="button" variant="outline" onclick={addOrUpdateWindowOverride} class="shrink-0 gap-2">
       <SaveIcon class="size-4 shrink-0" aria-hidden="true" />
       Save override from default
-    </button>
+    </Button>
   </div>
   <ul class="mt-4 space-y-2 text-sm">
     {#each settings as setting (setting.windowTitle)}

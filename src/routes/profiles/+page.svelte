@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import { backend } from "$services/backend";
   import type { Profile } from "$models/domain";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import CheckIcon from "@lucide/svelte/icons/check";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -12,18 +14,6 @@
   let newProfileName = $state("");
   let status = $state("");
   let error = $state("");
-
-  const inputClass =
-    "w-full min-w-[8rem] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-  const btnPrimary =
-    "inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
-
-  const btnOutline =
-    "inline-flex items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
-
-  const btnDestructive =
-    "inline-flex items-center justify-center gap-1.5 rounded-md border border-destructive/50 bg-background px-3 py-2 text-sm font-medium text-destructive shadow-sm transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
 
   async function refreshProfiles() {
     profiles = await backend.getProfiles();
@@ -92,15 +82,11 @@
   </div>
 
   <div class="mb-4 flex flex-wrap items-center gap-2">
-    <input
-      class={`${inputClass} max-w-xs flex-1`}
-      bind:value={newProfileName}
-      placeholder="New profile name"
-    />
-    <button type="button" class={btnPrimary} onclick={addProfile}>
+    <Input class="max-w-xs min-w-0 flex-1" bind:value={newProfileName} placeholder="New profile name" />
+    <Button type="button" onclick={addProfile}>
       <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
       Add
-    </button>
+    </Button>
   </div>
 
   {#if status}
@@ -128,8 +114,8 @@
           <tr class="border-b border-border/60">
             <td class="p-2 align-middle">{profile.name}</td>
             <td class="p-2 align-middle">
-              <input
-                class={inputClass}
+              <Input
+                class="min-w-[8rem]"
                 value={profile.switchHotkey}
                 onblur={(e) =>
                   saveHotkey(profile.id, (e.currentTarget as HTMLInputElement).value)}
@@ -139,24 +125,24 @@
             <td class="p-2 align-middle">{profile.isActive ? "Yes" : "No"}</td>
             <td class="p-2 align-middle">
               <div class="flex flex-wrap gap-2">
-                <button
+                <Button
                   type="button"
-                  class={btnOutline}
+                  variant="outline"
                   onclick={() => setActive(profile.id)}
                   disabled={profile.isActive}
                 >
                   <CheckIcon class="size-4 shrink-0" aria-hidden="true" />
                   Set Active
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  class={btnDestructive}
+                  variant="destructive"
                   onclick={() => removeProfile(profile.id)}
                   disabled={profile.isActive}
                 >
                   <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
                   Delete
-                </button>
+                </Button>
               </div>
             </td>
           </tr>

@@ -3,6 +3,7 @@
   import { backend } from "$services/backend";
   import type { MumbleLink, MumbleServerGroup } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
+  import { Checkbox } from "$lib/components/ui/checkbox";
   import { Input } from "$lib/components/ui/input";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import {
@@ -219,11 +220,11 @@
         {#each links as link (link.id)}
           <TableRow>
             <TableCell>
-              <input
-                class="size-4 rounded border border-input text-primary focus-visible:ring-2 focus-visible:ring-ring"
-                type="checkbox"
+              <Checkbox
                 checked={link.isSelected}
-                onchange={() => toggleSelected(link)}
+                onCheckedChange={() => {
+                  void toggleSelected(link);
+                }}
               />
             </TableCell>
             <TableCell><Input bind:value={link.name} /></TableCell>
