@@ -53,9 +53,7 @@
     }
   }
 
-  onMount(async () => {
-    await refresh();
-  });
+  onMount(refresh);
 </script>
 
 <Card class="shadow-sm">

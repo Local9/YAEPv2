@@ -17,8 +17,15 @@
   import ListIcon from "@lucide/svelte/icons/list";
   import MousePointerClickIcon from "@lucide/svelte/icons/mouse-pointer-click";
 
-  type ThumbnailEvent = { pid: number; windowTitle: string };
-  type FocusEvent = { pid: number | null; windowTitle: string | null };
+  interface ThumbnailEvent {
+    pid: number;
+    windowTitle: string;
+  }
+
+  interface FocusEvent {
+    pid: number | null;
+    windowTitle: string | null;
+  }
 
   let health = $state<HealthSnapshot | null>(null);
   let error = $state("");

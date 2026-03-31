@@ -3,7 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-  type Payload = {
+  interface Payload {
     overlayId: string;
     pid: number;
     focused: boolean;
@@ -11,7 +11,7 @@
     focusBorderThickness: number;
     showTitleOverlay: boolean;
     title: string;
-  };
+  }
 
   let overlayId = $state("");
   let pid = $state(0);

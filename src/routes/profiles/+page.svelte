@@ -82,9 +82,7 @@
     }
   }
 
-  onMount(async () => {
-    await refreshProfiles();
-  });
+  onMount(refreshProfiles);
 </script>
 
 <Card class="shadow-sm">
