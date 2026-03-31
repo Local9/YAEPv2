@@ -7,6 +7,14 @@
   import { Input } from "$lib/components/ui/input";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+  } from "$lib/components/ui/card";
+  import { Field, FieldContent, FieldLabel } from "$lib/components/ui/field";
+  import {
     Table,
     TableBody,
     TableCell,
@@ -117,26 +125,26 @@
   onMount(refresh);
 </script>
 
-<section class="rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm">
-  <div class="mb-4 flex items-start gap-3">
-    <RadioIcon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-    <div>
-      <h2 class="text-lg font-semibold tracking-tight">Mumble Links</h2>
-      <p class="mt-1 text-sm text-muted-foreground">
-        Manage links/groups and persisted overlay/drawer settings.
-      </p>
+<Card class="shadow-sm">
+  <CardHeader>
+    <div class="flex items-start gap-3">
+      <RadioIcon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div>
+        <CardTitle class="text-lg font-semibold tracking-tight">Mumble Links</CardTitle>
+        <CardDescription>Manage links/groups and persisted overlay/drawer settings.</CardDescription>
+      </div>
     </div>
-  </div>
-
+  </CardHeader>
+  <CardContent>
   {#if status}
-    <Alert class="mt-3 border-primary/30 bg-primary/5">
+    <Alert class="border-primary/30 bg-primary/5">
       <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
       <AlertTitle>Status</AlertTitle>
       <AlertDescription>{status}</AlertDescription>
     </Alert>
   {/if}
   {#if error}
-    <Alert variant="destructive" class="mt-3">
+    <Alert variant="destructive">
       <AlertCircleIcon class="size-4" aria-hidden="true" />
       <AlertTitle>Error</AlertTitle>
       <AlertDescription>{error}</AlertDescription>
@@ -187,18 +195,24 @@
   <div
     class="mt-3 grid max-w-5xl grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_minmax(8rem,1fr)_auto] md:items-end"
   >
-    <label class="grid gap-1.5 text-sm font-medium">
-      <span class="text-muted-foreground">Name</span>
-      <Input bind:value={newLinkName} placeholder="Link name" />
-    </label>
-    <label class="grid gap-1.5 text-sm font-medium">
-      <span class="text-muted-foreground">URL</span>
-      <Input bind:value={newLinkUrl} placeholder="mumble://..." />
-    </label>
-    <label class="grid gap-1.5 text-sm font-medium">
-      <span class="text-muted-foreground">Hotkey</span>
-      <Input bind:value={newLinkHotkey} placeholder="Ctrl+Alt+M" />
-    </label>
+    <Field>
+      <FieldLabel class="text-muted-foreground">Name</FieldLabel>
+      <FieldContent>
+        <Input bind:value={newLinkName} placeholder="Link name" />
+      </FieldContent>
+    </Field>
+    <Field>
+      <FieldLabel class="text-muted-foreground">URL</FieldLabel>
+      <FieldContent>
+        <Input bind:value={newLinkUrl} placeholder="mumble://..." />
+      </FieldContent>
+    </Field>
+    <Field>
+      <FieldLabel class="text-muted-foreground">Hotkey</FieldLabel>
+      <FieldContent>
+        <Input bind:value={newLinkHotkey} placeholder="Ctrl+Alt+M" />
+      </FieldContent>
+    </Field>
     <Button onclick={addLink} class="gap-2 md:mb-0">
       <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
       Add Link
@@ -248,4 +262,5 @@
       </TableBody>
     </Table>
   </div>
-</section>
+  </CardContent>
+</Card>

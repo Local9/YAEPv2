@@ -5,6 +5,14 @@
   import { Checkbox } from "$lib/components/ui/checkbox";
   import * as Select from "$lib/components/ui/select";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+  } from "$lib/components/ui/card";
+  import { Field, FieldContent, FieldLabel } from "$lib/components/ui/field";
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import SaveIcon from "@lucide/svelte/icons/save";
@@ -45,63 +53,72 @@
   onMount(refresh);
 </script>
 
-<section class="rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm">
-  <div class="mb-4 flex items-start gap-3">
-    <SettingsIcon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-    <div>
-      <h2 class="text-lg font-semibold tracking-tight">Settings</h2>
-      <p class="mt-1 text-sm text-muted-foreground">App-level settings with persisted values.</p>
+<Card class="shadow-sm">
+  <CardHeader>
+    <div class="flex items-start gap-3">
+      <SettingsIcon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div>
+        <CardTitle class="text-lg font-semibold tracking-tight">Settings</CardTitle>
+        <CardDescription>App-level settings with persisted values.</CardDescription>
+      </div>
     </div>
-  </div>
+  </CardHeader>
+  <CardContent>
+    {#if saveStatus}
+      <Alert class="border-primary/30 bg-primary/5">
+        <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
+        <AlertTitle>Status</AlertTitle>
+        <AlertDescription>{saveStatus}</AlertDescription>
+      </Alert>
+    {/if}
+    {#if error}
+      <Alert variant="destructive">
+        <AlertCircleIcon class="size-4" aria-hidden="true" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    {/if}
 
-  {#if saveStatus}
-    <Alert class="mt-3 border-primary/30 bg-primary/5">
-      <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
-      <AlertTitle>Status</AlertTitle>
-      <AlertDescription>{saveStatus}</AlertDescription>
-    </Alert>
-  {/if}
-  {#if error}
-    <Alert variant="destructive" class="mt-3">
-      <AlertCircleIcon class="size-4" aria-hidden="true" />
-      <AlertTitle>Error</AlertTitle>
-      <AlertDescription>{error}</AlertDescription>
-    </Alert>
-  {/if}
-
-  <div class="mt-4 grid max-w-3xl gap-3">
-    <label class="flex cursor-pointer items-center gap-2 text-sm font-medium">
-      <Checkbox bind:checked={enableThumbnailDragging} />
-      <span class="text-foreground">Enable Thumbnail Dragging</span>
-    </label>
-    <label class="flex cursor-pointer items-center gap-2 text-sm font-medium">
-      <Checkbox bind:checked={startHidden} />
-      <span class="text-foreground">Start Hidden</span>
-    </label>
-    <div class="grid max-w-md gap-1.5 text-sm font-medium">
-      <span class="text-muted-foreground">Theme</span>
-      <Select.Root
-        type="single"
-        bind:value={theme}
-        items={[
-          { value: "Dark", label: "Dark" },
-          { value: "Light", label: "Light" },
-        ]}
-      >
-        <Select.Trigger class="w-full">
-          <span data-slot="select-value">{theme}</span>
-        </Select.Trigger>
-        <Select.Content>
-          <Select.Item value="Dark">Dark</Select.Item>
-          <Select.Item value="Light">Light</Select.Item>
-        </Select.Content>
-      </Select.Root>
+    <div class="mt-4 grid max-w-3xl gap-3">
+      <Field orientation="horizontal" class="cursor-pointer items-center">
+        <FieldContent>
+          <Checkbox bind:checked={enableThumbnailDragging} />
+        </FieldContent>
+        <FieldLabel class="text-foreground">Enable Thumbnail Dragging</FieldLabel>
+      </Field>
+      <Field orientation="horizontal" class="cursor-pointer items-center">
+        <FieldContent>
+          <Checkbox bind:checked={startHidden} />
+        </FieldContent>
+        <FieldLabel class="text-foreground">Start Hidden</FieldLabel>
+      </Field>
+      <Field class="max-w-md">
+        <FieldLabel class="text-muted-foreground">Theme</FieldLabel>
+        <FieldContent>
+          <Select.Root
+            type="single"
+            bind:value={theme}
+            items={[
+              { value: "Dark", label: "Dark" },
+              { value: "Light", label: "Light" },
+            ]}
+          >
+            <Select.Trigger class="w-full">
+              <span data-slot="select-value">{theme}</span>
+            </Select.Trigger>
+            <Select.Content>
+              <Select.Item value="Dark">Dark</Select.Item>
+              <Select.Item value="Light">Light</Select.Item>
+            </Select.Content>
+          </Select.Root>
+        </FieldContent>
+      </Field>
+      <div>
+        <Button onclick={save} class="gap-2">
+          <SaveIcon class="size-4 shrink-0" aria-hidden="true" />
+          Save settings
+        </Button>
+      </div>
     </div>
-    <div>
-      <Button onclick={save} class="gap-2">
-        <SaveIcon class="size-4 shrink-0" aria-hidden="true" />
-        Save settings
-      </Button>
-    </div>
-  </div>
-</section>
+  </CardContent>
+</Card>

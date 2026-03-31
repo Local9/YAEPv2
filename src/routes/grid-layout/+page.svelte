@@ -13,6 +13,14 @@
   import * as Select from "$lib/components/ui/select";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+  } from "$lib/components/ui/card";
+  import { Field, FieldContent, FieldLabel } from "$lib/components/ui/field";
+  import {
     Table,
     TableBody,
     TableCell,
@@ -115,64 +123,78 @@
   onMount(loadContext);
 </script>
 
-<section class="rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm">
-  <div class="mb-4 flex items-start gap-3">
-    <Grid3x3Icon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-    <div>
-      <h2 class="text-lg font-semibold tracking-tight">Grid Layout</h2>
-      <p class="mt-1 text-sm text-muted-foreground">Build preview and apply bulk layout updates.</p>
+<Card class="shadow-sm">
+  <CardHeader>
+    <div class="flex items-start gap-3">
+      <Grid3x3Icon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div>
+        <CardTitle class="text-lg font-semibold tracking-tight">Grid Layout</CardTitle>
+        <CardDescription>Build preview and apply bulk layout updates.</CardDescription>
+      </div>
     </div>
-  </div>
-
+  </CardHeader>
+  <CardContent>
   <div class="grid max-w-4xl grid-cols-1 gap-3 sm:grid-cols-3">
-    <label class="grid gap-1.5 text-sm font-medium">
-      <span class="text-muted-foreground">Cell Width</span>
-      <Input type="number" bind:value={gridCellWidth} />
-    </label>
-    <label class="grid gap-1.5 text-sm font-medium">
-      <span class="text-muted-foreground">Cell Height</span>
-      <Input type="number" bind:value={gridCellHeight} />
-    </label>
-    <label class="grid gap-1.5 text-sm font-medium">
-      <span class="text-muted-foreground">Columns</span>
-      <Input type="number" bind:value={gridColumns} />
-    </label>
-    <label class="grid gap-1.5 text-sm font-medium">
-      <span class="text-muted-foreground">Start X</span>
-      <Input type="number" bind:value={gridStartX} />
-    </label>
-    <label class="grid gap-1.5 text-sm font-medium">
-      <span class="text-muted-foreground">Start Y</span>
-      <Input type="number" bind:value={gridStartY} />
-    </label>
-    <div class="grid gap-1.5 text-sm font-medium sm:col-span-3">
-      <span class="flex items-center gap-1.5 text-muted-foreground">
+    <Field>
+      <FieldLabel class="text-muted-foreground">Cell Width</FieldLabel>
+      <FieldContent>
+        <Input type="number" bind:value={gridCellWidth} />
+      </FieldContent>
+    </Field>
+    <Field>
+      <FieldLabel class="text-muted-foreground">Cell Height</FieldLabel>
+      <FieldContent>
+        <Input type="number" bind:value={gridCellHeight} />
+      </FieldContent>
+    </Field>
+    <Field>
+      <FieldLabel class="text-muted-foreground">Columns</FieldLabel>
+      <FieldContent>
+        <Input type="number" bind:value={gridColumns} />
+      </FieldContent>
+    </Field>
+    <Field>
+      <FieldLabel class="text-muted-foreground">Start X</FieldLabel>
+      <FieldContent>
+        <Input type="number" bind:value={gridStartX} />
+      </FieldContent>
+    </Field>
+    <Field>
+      <FieldLabel class="text-muted-foreground">Start Y</FieldLabel>
+      <FieldContent>
+        <Input type="number" bind:value={gridStartY} />
+      </FieldContent>
+    </Field>
+    <Field class="sm:col-span-3">
+      <FieldLabel class="flex items-center gap-1.5 text-muted-foreground">
         <MonitorIcon class="size-3.5 shrink-0" aria-hidden="true" />
         Monitor
-      </span>
-      <Select.Root type="single" bind:value={selectedMonitorIndex} items={monitorSelectItems}>
-        <Select.Trigger class="mt-1.5 w-full">
-          <span data-slot="select-value">{monitorTriggerLabel}</span>
-        </Select.Trigger>
-        <Select.Content>
-          <Select.Item value="" label="All / default origin">All / default origin</Select.Item>
-          {#each monitors as m (m.index)}
-            <Select.Item
-              value={String(m.index)}
-              label={`${m.index}: ${m.name || "Display"}${m.isPrimary ? " (primary)" : ""}`}
-            >
-              {m.index}: {m.name || "Display"}{m.isPrimary ? " (primary)" : ""}
-            </Select.Item>
-          {/each}
-        </Select.Content>
-      </Select.Root>
-    </div>
-    <label
-      class="flex cursor-pointer items-center gap-2 self-end text-sm font-medium sm:col-span-3"
-    >
-      <Checkbox bind:checked={onlyAffectActiveThumbnails} />
-      <span class="text-muted-foreground">Only active thumbnails</span>
-    </label>
+      </FieldLabel>
+      <FieldContent>
+        <Select.Root type="single" bind:value={selectedMonitorIndex} items={monitorSelectItems}>
+          <Select.Trigger class="w-full">
+            <span data-slot="select-value">{monitorTriggerLabel}</span>
+          </Select.Trigger>
+          <Select.Content>
+            <Select.Item value="" label="All / default origin">All / default origin</Select.Item>
+            {#each monitors as m (m.index)}
+              <Select.Item
+                value={String(m.index)}
+                label={`${m.index}: ${m.name || "Display"}${m.isPrimary ? " (primary)" : ""}`}
+              >
+                {m.index}: {m.name || "Display"}{m.isPrimary ? " (primary)" : ""}
+              </Select.Item>
+            {/each}
+          </Select.Content>
+        </Select.Root>
+      </FieldContent>
+    </Field>
+    <Field orientation="horizontal" class="cursor-pointer self-end sm:col-span-3">
+      <FieldContent>
+        <Checkbox bind:checked={onlyAffectActiveThumbnails} />
+      </FieldContent>
+      <FieldLabel class="text-muted-foreground">Only active thumbnails</FieldLabel>
+    </Field>
   </div>
 
   <div class="mt-4 flex flex-wrap gap-2">
@@ -225,4 +247,5 @@
       </TableBody>
     </Table>
   </div>
-</section>
+  </CardContent>
+</Card>

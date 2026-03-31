@@ -4,9 +4,26 @@
   import type { ClientGroup, Profile } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
+  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+  } from "$lib/components/ui/card";
+  import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+  } from "$lib/components/ui/table";
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
   import ArrowRightIcon from "@lucide/svelte/icons/arrow-right";
+  import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import LayersIcon from "@lucide/svelte/icons/layers";
 
   let profiles = $state<Profile[]>([]);
@@ -52,74 +69,82 @@
   onMount(refresh);
 </script>
 
-<section class="rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm">
-  <div class="mb-4 flex items-start gap-3">
-    <LayersIcon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-    <div>
-      <h2 class="text-lg font-semibold tracking-tight">Client Grouping</h2>
-      <p class="mt-1 text-sm text-muted-foreground">
-        Client groups for active profile with cycle hotkey and activation baseline.
-      </p>
+<Card class="shadow-sm">
+  <CardHeader>
+    <div class="flex items-start gap-3">
+      <LayersIcon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div>
+        <CardTitle class="text-lg font-semibold tracking-tight">Client Grouping</CardTitle>
+        <CardDescription>
+          Client groups for active profile with cycle hotkey and activation baseline.
+        </CardDescription>
+      </div>
     </div>
-  </div>
+  </CardHeader>
+  <CardContent>
+    {#if status}
+      <Alert class="border-primary/30 bg-primary/5">
+        <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
+        <AlertTitle>Status</AlertTitle>
+        <AlertDescription>{status}</AlertDescription>
+      </Alert>
+    {/if}
+    {#if error}
+      <Alert variant="destructive">
+        <AlertCircleIcon class="size-4 shrink-0" aria-hidden="true" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    {/if}
 
-  {#if status}
-    <p class="mb-2 text-sm text-muted-foreground">{status}</p>
-  {/if}
-  {#if error}
-    <p class="mb-2 flex items-center gap-2 text-sm text-destructive" role="alert">
-      <AlertCircleIcon class="size-4 shrink-0" aria-hidden="true" />
-      {error}
-    </p>
-  {/if}
-
-  <div class="overflow-x-auto">
-    <table class="w-full border-collapse text-sm">
-      <thead>
-        <tr class="border-b border-border">
-          <th class="p-2 text-left font-medium text-muted-foreground">Name</th>
-          <th class="p-2 text-left font-medium text-muted-foreground">Display Order</th>
-          <th class="p-2 text-left font-medium text-muted-foreground">Forward Hotkey</th>
-          <th class="p-2 text-left font-medium text-muted-foreground">Backward Hotkey</th>
-          <th class="p-2 text-left font-medium text-muted-foreground">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each groups as group (group.id)}
-          <tr class="border-b border-border/60">
-            <td class="p-2 align-middle">{group.name}</td>
-            <td class="p-2 align-middle">{group.displayOrder}</td>
-            <td class="p-2 align-middle">
-              <Input
-                class="min-w-[10rem]"
-                bind:value={group.cycleForwardHotkey}
-                placeholder="Ctrl+Alt+F13"
-                onblur={() => saveHotkeys(group)}
-              />
-            </td>
-            <td class="p-2 align-middle">
-              <Input
-                class="min-w-[10rem]"
-                bind:value={group.cycleBackwardHotkey}
-                placeholder="Ctrl+Alt+F14"
-                onblur={() => saveHotkeys(group)}
-              />
-            </td>
-            <td class="p-2 align-middle">
-              <div class="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" onclick={() => cycle(group, "forward")}>
-                  <ArrowRightIcon class="size-4 shrink-0" aria-hidden="true" />
-                  Cycle Next
-                </Button>
-                <Button type="button" variant="outline" onclick={() => cycle(group, "backward")}>
-                  <ArrowLeftIcon class="size-4 shrink-0" aria-hidden="true" />
-                  Cycle Prev
-                </Button>
-              </div>
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  </div>
-</section>
+    <div class="mt-4 overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Display Order</TableHead>
+            <TableHead>Forward Hotkey</TableHead>
+            <TableHead>Backward Hotkey</TableHead>
+            <TableHead>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {#each groups as group (group.id)}
+            <TableRow>
+              <TableCell>{group.name}</TableCell>
+              <TableCell>{group.displayOrder}</TableCell>
+              <TableCell>
+                <Input
+                  class="min-w-[10rem]"
+                  bind:value={group.cycleForwardHotkey}
+                  placeholder="Ctrl+Alt+F13"
+                  onblur={() => saveHotkeys(group)}
+                />
+              </TableCell>
+              <TableCell>
+                <Input
+                  class="min-w-[10rem]"
+                  bind:value={group.cycleBackwardHotkey}
+                  placeholder="Ctrl+Alt+F14"
+                  onblur={() => saveHotkeys(group)}
+                />
+              </TableCell>
+              <TableCell>
+                <div class="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" onclick={() => cycle(group, "forward")}>
+                    <ArrowRightIcon class="size-4 shrink-0" aria-hidden="true" />
+                    Cycle Next
+                  </Button>
+                  <Button type="button" variant="outline" onclick={() => cycle(group, "backward")}>
+                    <ArrowLeftIcon class="size-4 shrink-0" aria-hidden="true" />
+                    Cycle Prev
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          {/each}
+        </TableBody>
+      </Table>
+    </div>
+  </CardContent>
+</Card>

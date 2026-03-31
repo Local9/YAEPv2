@@ -21,6 +21,10 @@ Act as an expert in **Svelte 5** with **SvelteKit 2**, using **runes** as the de
 - Prefer utility classes and design tokens already in the project (`app.css`, theme extensions); use `@apply` sparingly for repeated complex patterns.
 - Follow existing spacing, typography, and color variables (e.g. sidebar tokens) for visual consistency.
 
+## Shadcn components
+
+- Follow `shadcn-ui.mdc`: prefer `$lib/components/ui` primitives for buttons, forms, tables, alerts, cards, and dividers.
+
 ## Tauri desktop UI
 
 - Centralize shared app state in stores with models aligned to the Rust command contracts.

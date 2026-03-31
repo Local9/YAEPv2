@@ -1,0 +1,13 @@
+---
+description: Prefer shadcn-svelte primitives from $lib/components/ui for interactive UI and common layout patterns
+globs: "src/**/*.svelte"
+alwaysApply: false
+---
+
+# Shadcn UI (project components)
+
+- Use components from `$lib/components/ui/` (shadcn-svelte) for interactive and structural UI: `Button`, `Input`, `Checkbox`, `Switch`, `Select`, `Table`, `Alert`, `Card`, `Separator`, `Label`, `Field` / `FieldLabel` / `FieldContent` (and related field pieces), `Tooltip`, etc.
+- Avoid hand-rolled styled `<button>`, raw data `<table>` markup for app tables, ad-hoc `<label class="grid ...">` stacks for labeled controls, and plain `<hr>` section dividers when `Separator` fits.
+- Exceptions: semantic navigation stays as appropriate (`<a href>` in sidebar), and special surfaces like the transparent `thumbnail-overlay` route may use plain `div` chrome without `Card`.
+
+See also: `sveltekit-frontend-patterns.mdc` for SvelteKit and Tailwind conventions.

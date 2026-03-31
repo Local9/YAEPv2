@@ -4,7 +4,24 @@
   import type { Profile } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
+  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+  } from "$lib/components/ui/card";
+  import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+  } from "$lib/components/ui/table";
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
+  import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import CheckIcon from "@lucide/svelte/icons/check";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
@@ -70,84 +87,92 @@
   });
 </script>
 
-<section class="rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm">
-  <div class="mb-4 flex items-start gap-3">
-    <UsersIcon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-    <div>
-      <h2 class="text-lg font-semibold tracking-tight">Profiles</h2>
-      <p class="mt-1 text-sm text-muted-foreground">
-        Manage profiles, active profile state, and profile switch hotkeys.
-      </p>
+<Card class="shadow-sm">
+  <CardHeader>
+    <div class="flex items-start gap-3">
+      <UsersIcon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div>
+        <CardTitle class="text-lg font-semibold tracking-tight">Profiles</CardTitle>
+        <CardDescription>
+          Manage profiles, active profile state, and profile switch hotkeys.
+        </CardDescription>
+      </div>
     </div>
-  </div>
+  </CardHeader>
+  <CardContent>
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <Input class="max-w-xs min-w-0 flex-1" bind:value={newProfileName} placeholder="New profile name" />
+      <Button type="button" onclick={addProfile}>
+        <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
+        Add
+      </Button>
+    </div>
 
-  <div class="mb-4 flex flex-wrap items-center gap-2">
-    <Input class="max-w-xs min-w-0 flex-1" bind:value={newProfileName} placeholder="New profile name" />
-    <Button type="button" onclick={addProfile}>
-      <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
-      Add
-    </Button>
-  </div>
+    {#if status}
+      <Alert class="border-primary/30 bg-primary/5">
+        <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
+        <AlertTitle>Status</AlertTitle>
+        <AlertDescription>{status}</AlertDescription>
+      </Alert>
+    {/if}
+    {#if error}
+      <Alert variant="destructive">
+        <AlertCircleIcon class="size-4 shrink-0" aria-hidden="true" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    {/if}
 
-  {#if status}
-    <p class="mb-2 text-sm text-muted-foreground">{status}</p>
-  {/if}
-  {#if error}
-    <p class="mb-2 flex items-center gap-2 text-sm text-destructive" role="alert">
-      <AlertCircleIcon class="size-4 shrink-0" aria-hidden="true" />
-      {error}
-    </p>
-  {/if}
-
-  <div class="overflow-x-auto">
-    <table class="w-full border-collapse text-sm">
-      <thead>
-        <tr class="border-b border-border">
-          <th class="p-2 text-left font-medium text-muted-foreground">Name</th>
-          <th class="p-2 text-left font-medium text-muted-foreground">Hotkey</th>
-          <th class="p-2 text-left font-medium text-muted-foreground">Active</th>
-          <th class="p-2 text-left font-medium text-muted-foreground">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each profiles as profile (profile.id)}
-          <tr class="border-b border-border/60">
-            <td class="p-2 align-middle">{profile.name}</td>
-            <td class="p-2 align-middle">
-              <Input
-                class="min-w-[8rem]"
-                value={profile.switchHotkey}
-                onblur={(e) =>
-                  saveHotkey(profile.id, (e.currentTarget as HTMLInputElement).value)}
-                placeholder="Ctrl+Alt+F1"
-              />
-            </td>
-            <td class="p-2 align-middle">{profile.isActive ? "Yes" : "No"}</td>
-            <td class="p-2 align-middle">
-              <div class="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onclick={() => setActive(profile.id)}
-                  disabled={profile.isActive}
-                >
-                  <CheckIcon class="size-4 shrink-0" aria-hidden="true" />
-                  Set Active
-                </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onclick={() => removeProfile(profile.id)}
-                  disabled={profile.isActive}
-                >
-                  <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
-                  Delete
-                </Button>
-              </div>
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  </div>
-</section>
+    <div class="mt-4 overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Hotkey</TableHead>
+            <TableHead>Active</TableHead>
+            <TableHead>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {#each profiles as profile (profile.id)}
+            <TableRow>
+              <TableCell>{profile.name}</TableCell>
+              <TableCell>
+                <Input
+                  class="min-w-[8rem]"
+                  value={profile.switchHotkey}
+                  onblur={(e) =>
+                    saveHotkey(profile.id, (e.currentTarget as HTMLInputElement).value)}
+                  placeholder="Ctrl+Alt+F1"
+                />
+              </TableCell>
+              <TableCell>{profile.isActive ? "Yes" : "No"}</TableCell>
+              <TableCell>
+                <div class="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onclick={() => setActive(profile.id)}
+                    disabled={profile.isActive}
+                  >
+                    <CheckIcon class="size-4 shrink-0" aria-hidden="true" />
+                    Set Active
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onclick={() => removeProfile(profile.id)}
+                    disabled={profile.isActive}
+                  >
+                    <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
+                    Delete
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          {/each}
+        </TableBody>
+      </Table>
+    </div>
+  </CardContent>
+</Card>

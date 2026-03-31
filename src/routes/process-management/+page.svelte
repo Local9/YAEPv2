@@ -4,7 +4,16 @@
   import type { Profile } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
+  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+  } from "$lib/components/ui/card";
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
+  import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import CpuIcon from "@lucide/svelte/icons/cpu";
   import ListIcon from "@lucide/svelte/icons/list";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -56,57 +65,66 @@
   onMount(refresh);
 </script>
 
-<section class="rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm">
-  <div class="mb-4 flex items-start gap-3">
-    <CpuIcon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-    <div>
-      <h2 class="text-lg font-semibold tracking-tight">Process Management</h2>
-      <p class="mt-1 text-sm text-muted-foreground">
-        Configure process names to scan per active profile (for example, <code class="rounded bg-muted px-1 font-mono text-xs">exefile</code>).
-      </p>
-      <p class="mt-2 text-sm">
-        Active profile:
-        <strong class="font-medium text-foreground"
-          >{profiles.find((p) => p.id === activeProfileId)?.name ?? "None"}</strong
-        >
-      </p>
+<Card class="shadow-sm">
+  <CardHeader>
+    <div class="flex items-start gap-3">
+      <CpuIcon class="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div>
+        <CardTitle class="text-lg font-semibold tracking-tight">Process Management</CardTitle>
+        <CardDescription>
+          Configure process names to scan per active profile (for example, <code
+            class="rounded bg-muted px-1 font-mono text-xs">exefile</code>).
+        </CardDescription>
+        <p class="mt-2 text-sm text-muted-foreground">
+          Active profile:
+          <strong class="font-medium text-foreground"
+            >{profiles.find((p) => p.id === activeProfileId)?.name ?? "None"}</strong
+          >
+        </p>
+      </div>
     </div>
-  </div>
+  </CardHeader>
+  <CardContent>
+    <div class="mb-3 flex flex-wrap items-center gap-2">
+      <Input
+        class="min-w-[10rem] flex-1 sm:max-w-xs"
+        bind:value={newProcessName}
+        placeholder="exefile"
+      />
+      <Button type="button" onclick={addProcess} disabled={activeProfileId == null}>
+        <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
+        Add process
+      </Button>
+    </div>
 
-  <div class="mb-3 flex flex-wrap items-center gap-2">
-    <Input
-      class="min-w-[10rem] flex-1 sm:max-w-xs"
-      bind:value={newProcessName}
-      placeholder="exefile"
-    />
-    <Button type="button" onclick={addProcess} disabled={activeProfileId == null}>
-      <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
-      Add process
-    </Button>
-  </div>
+    {#if status}
+      <Alert class="border-primary/30 bg-primary/5">
+        <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
+        <AlertTitle>Status</AlertTitle>
+        <AlertDescription>{status}</AlertDescription>
+      </Alert>
+    {/if}
+    {#if error}
+      <Alert variant="destructive">
+        <AlertCircleIcon class="size-4 shrink-0" aria-hidden="true" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    {/if}
 
-  {#if status}
-    <p class="mb-2 text-sm text-muted-foreground">{status}</p>
-  {/if}
-  {#if error}
-    <p class="mb-2 flex items-center gap-2 text-sm text-destructive" role="alert">
-      <AlertCircleIcon class="size-4 shrink-0" aria-hidden="true" />
-      {error}
-    </p>
-  {/if}
-
-  <ul class="space-y-2">
-    {#each processes as process (process)}
-      <li
-        class="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm"
-      >
-        <ListIcon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <code class="min-w-0 flex-1 rounded bg-muted px-2 py-0.5 font-mono text-xs">{process}</code>
-        <Button type="button" variant="outline" onclick={() => removeProcess(process)}>
-          <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
-          Remove
-        </Button>
-      </li>
-    {/each}
-  </ul>
-</section>
+    <ul class="mt-4 space-y-2">
+      {#each processes as process (process)}
+        <li
+          class="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm"
+        >
+          <ListIcon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <code class="min-w-0 flex-1 rounded bg-muted px-2 py-0.5 font-mono text-xs">{process}</code>
+          <Button type="button" variant="outline" onclick={() => removeProcess(process)}>
+            <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
+            Remove
+          </Button>
+        </li>
+      {/each}
+    </ul>
+  </CardContent>
+</Card>
