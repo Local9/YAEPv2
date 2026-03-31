@@ -496,39 +496,6 @@ impl DbService {
         Ok(out)
     }
 
-    pub fn get_mumble_links_for_server_group(
-        &self,
-        group_id: i64,
-    ) -> Result<Vec<MumbleLink>, String> {
-        let conn = self.connection()?;
-        let mut stmt = conn
-            .prepare(
-                "SELECT m.Id, m.Name, m.Url, m.DisplayOrder, m.IsSelected, m.Hotkey
-                 FROM MumbleLinks m
-                 INNER JOIN MumbleLinkGroups g ON g.LinkId = m.Id
-                 WHERE g.GroupId = ?1
-                 ORDER BY m.DisplayOrder, m.Name",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([group_id], |row| {
-                Ok(MumbleLink {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    url: row.get(2)?,
-                    display_order: row.get(3)?,
-                    is_selected: row.get::<_, i64>(4)? == 1,
-                    hotkey: row.get(5)?,
-                })
-            })
-            .map_err(|e| e.to_string())?;
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(row.map_err(|e| e.to_string())?);
-        }
-        Ok(out)
-    }
-
     pub fn get_mumble_links(&self) -> Result<Vec<MumbleLink>, String> {
         let conn = self.connection()?;
         let mut stmt = conn

@@ -1,10 +1,11 @@
-//! **ThumbnailOverlayWindow** — Tauri `WebviewWindow` for Svelte `/thumbnail-overlay` (border, title).
+//! **ThumbnailOverlayWindow** — Tauri windows for Svelte `/thumbnail-overlay` (border, title).
 //!
-//! Two sibling windows, stacked **DWM thumbnail (bottom) / webview (top)**:
-//! - On Windows the overlay uses **`owner_raw(thumbnail_hwnd)`** so Win32 keeps the owned window
-//!   above the thumbnail window.
-//! - **[`sync_overlay_bounds_win`]** uses one **`SetWindowPos`** (position + size + insert-after) so
-//!   layout and Z-order apply atomically (avoids Tauri async `set_position` undoing Z-order).
+//! We create two Tauri windows per thumbnail on Windows:
+//! - an invisible **anchor** owned by the DWM thumbnail host HWND
+//! - the visible **overlay** owned by the anchor
+//!
+//! `sync_overlay_bounds_win` updates both windows with `SetWindowPos` to keep geometry and stacking
+//! stable: **DWM thumbnail (bottom) -> anchor (middle) -> overlay (top)**.
 
 use std::ffi::c_void;
 
@@ -38,6 +39,17 @@ pub fn overlay_window_label(overlay_id: &str) -> String {
     format!("thumb{}", overlay_id.replace('-', ""))
 }
 
+fn overlay_anchor_window_label(overlay_id: &str) -> String {
+    format!("thumba{}", overlay_id.replace('-', ""))
+}
+
+fn overlay_anchor_window_label_from_overlay_label(overlay_label: &str) -> String {
+    if let Some(suffix) = overlay_label.strip_prefix("thumb") {
+        return format!("thumba{suffix}");
+    }
+    format!("{overlay_label}_anchor")
+}
+
 fn overlay_entry_url(_app: &AppHandle, overlay_id: &str, pid: u32) -> Result<WebviewUrl, String> {
     #[cfg(debug_assertions)]
     let s = format!(
@@ -63,13 +75,14 @@ pub fn open_thumbnail_overlay_window(
     thumbnail_window_hwnd: isize,
 ) -> Result<String, String> {
     let label = overlay_window_label(overlay_id);
+    let anchor_label = overlay_anchor_window_label(overlay_id);
     if app.get_webview_window(&label).is_some() {
         return Ok(label);
     }
     let url = overlay_entry_url(app, overlay_id, pid)?;
     #[cfg(target_os = "windows")]
-    let win = {
-        let mut b = WebviewWindowBuilder::new(app, &label, url)
+    let (anchor_win, overlay_win) = {
+        let mut anchor_builder = WebviewWindowBuilder::new(app, &anchor_label, url.clone())
             .decorations(false)
             .transparent(true)
             .background_color(Color(0, 0, 0, 0))
@@ -78,14 +91,30 @@ pub fn open_thumbnail_overlay_window(
             .visible(false)
             .resizable(false);
         if thumbnail_window_hwnd != 0 {
-            b = b.owner_raw(HWND(thumbnail_window_hwnd as *mut c_void));
+            anchor_builder = anchor_builder.owner_raw(HWND(thumbnail_window_hwnd as *mut c_void));
         } else {
-            b = b.always_on_top(true);
+            anchor_builder = anchor_builder.always_on_top(true);
         }
-        b.build().map_err(|e| e.to_string())?
+        let anchor = anchor_builder.build().map_err(|e| e.to_string())?;
+
+        let mut overlay_builder = WebviewWindowBuilder::new(app, &label, url)
+            .decorations(false)
+            .transparent(true)
+            .background_color(Color(0, 0, 0, 0))
+            .shadow(false)
+            .skip_taskbar(true)
+            .visible(false)
+            .resizable(false);
+        if let Ok(anchor_hwnd) = anchor.hwnd() {
+            overlay_builder = overlay_builder.owner_raw(anchor_hwnd);
+        } else {
+            overlay_builder = overlay_builder.always_on_top(true);
+        }
+        let overlay = overlay_builder.build().map_err(|e| e.to_string())?;
+        (anchor, overlay)
     };
     #[cfg(not(target_os = "windows"))]
-    let win = WebviewWindowBuilder::new(app, &label, url)
+    let overlay_win = WebviewWindowBuilder::new(app, &label, url)
         .decorations(false)
         .transparent(true)
         .background_color(Color(0, 0, 0, 0))
@@ -96,9 +125,15 @@ pub fn open_thumbnail_overlay_window(
         .resizable(false)
         .build()
         .map_err(|e| e.to_string())?;
-    let _ = win.set_title("YAEP thumbnail overlay");
-    let _ = win.set_background_color(Some(Color(0, 0, 0, 0)));
-    let _ = win.set_ignore_cursor_events(true);
+    #[cfg(target_os = "windows")]
+    {
+        let _ = anchor_win.set_title("YAEP thumbnail overlay anchor");
+        let _ = anchor_win.set_background_color(Some(Color(0, 0, 0, 0)));
+        let _ = anchor_win.set_ignore_cursor_events(true);
+    }
+    let _ = overlay_win.set_title("YAEP thumbnail overlay");
+    let _ = overlay_win.set_background_color(Some(Color(0, 0, 0, 0)));
+    let _ = overlay_win.set_ignore_cursor_events(true);
     Ok(label)
 }
 
@@ -109,6 +144,13 @@ pub fn close_thumbnail_overlay_window(app: &AppHandle, label: &str) {
     if let Some(w) = app.get_webview_window(label) {
         let _ = w.close();
     }
+    #[cfg(target_os = "windows")]
+    {
+        let anchor_label = overlay_anchor_window_label_from_overlay_label(label);
+        if let Some(w) = app.get_webview_window(&anchor_label) {
+            let _ = w.close();
+        }
+    }
 }
 
 pub fn show_overlay_window(app: &AppHandle, label: &str) {
@@ -116,6 +158,14 @@ pub fn show_overlay_window(app: &AppHandle, label: &str) {
         return;
     }
     if let Some(w) = app.get_webview_window(label) {
+        #[cfg(target_os = "windows")]
+        {
+            let anchor_label = overlay_anchor_window_label_from_overlay_label(label);
+            if let Some(anchor) = app.get_webview_window(&anchor_label) {
+                let _ = anchor.show();
+                let _ = anchor.set_ignore_cursor_events(true);
+            }
+        }
         let _ = w.show();
         let _ = w.set_ignore_cursor_events(true);
     }
@@ -139,7 +189,13 @@ pub fn sync_overlay_bounds_win(
     if thumbnail_window_hwnd == 0 || overlay_label.is_empty() {
         return;
     }
-    let Some(win) = app.get_webview_window(overlay_label) else {
+    let Some(overlay_win) = app.get_webview_window(overlay_label) else {
+        return;
+    };
+    #[cfg(target_os = "windows")]
+    let anchor_label = overlay_anchor_window_label_from_overlay_label(overlay_label);
+    #[cfg(target_os = "windows")]
+    let Some(anchor_win) = app.get_webview_window(&anchor_label) else {
         return;
     };
     let mut rect = RECT::default();
@@ -156,13 +212,25 @@ pub fn sync_overlay_bounds_win(
     let h = (rect.bottom - rect.top).max(1);
     #[cfg(target_os = "windows")]
     {
-        let Ok(overlay_hwnd) = win.hwnd() else {
+        let Ok(anchor_hwnd) = anchor_win.hwnd() else {
+            return;
+        };
+        let Ok(overlay_hwnd) = overlay_win.hwnd() else {
             return;
         };
         unsafe {
             let _ = SetWindowPos(
-                overlay_hwnd,
+                anchor_hwnd,
                 Some(HWND(thumbnail_window_hwnd as *mut c_void)),
+                rect.left,
+                rect.top,
+                w,
+                h,
+                SWP_NOACTIVATE,
+            );
+            let _ = SetWindowPos(
+                overlay_hwnd,
+                Some(anchor_hwnd),
                 rect.left,
                 rect.top,
                 w,
@@ -173,15 +241,17 @@ pub fn sync_overlay_bounds_win(
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+        let _ = overlay_win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
             rect.left, rect.top,
         )));
-        let _ = win.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+        let _ = overlay_win.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
             w as u32,
             h as u32,
         )));
     }
-    let _ = win.set_ignore_cursor_events(true);
+    #[cfg(target_os = "windows")]
+    let _ = anchor_win.set_ignore_cursor_events(true);
+    let _ = overlay_win.set_ignore_cursor_events(true);
 }
 
 pub fn overlay_state_payload(

@@ -18,7 +18,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetCursorPos,
     GetWindowRect, IsIconic, IsWindow, LoadCursorW, RegisterClassW, SetCursor, SetForegroundWindow,
     SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, CW_USEDEFAULT, GWLP_USERDATA,
-    IDC_ARROW, SW_RESTORE, SW_SHOWNA, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    IDC_ARROW, SW_RESTORE, SW_SHOWNA, SWP_NOACTIVATE, SWP_NOZORDER,
     WINDOW_EX_STYLE,
     WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MBUTTONDOWN, WM_RBUTTONDOWN,
     WM_RBUTTONUP, WM_SETCURSOR, WNDCLASSW, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
