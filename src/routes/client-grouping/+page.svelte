@@ -5,6 +5,7 @@
   import type { ClientGroupDetail, Profile, ThumbnailSetting } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
+  import * as Dialog from "$lib/components/ui/dialog";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import {
     Card,
@@ -52,6 +53,7 @@
   let status = $state("");
   let error = $state("");
   let newGroupName = $state("");
+  let createGroupDialogOpen = $state(false);
 
   let dragGroupId = $state<number | null>(null);
   let dragTitle = $state<string | null>(null);
@@ -154,6 +156,7 @@
     try {
       await backend.createClientGroup(activeProfileId, name);
       newGroupName = "";
+      createGroupDialogOpen = false;
       status = `Created group ${name}`;
       error = "";
       await refresh();
@@ -339,18 +342,55 @@
     {#if activeProfileId == null}
       <p class="text-muted-foreground mt-4 text-sm">Select an active profile to manage client groups.</p>
     {:else}
-      <div class="mt-4 flex flex-wrap items-end gap-2 border-b border-border pb-4">
-        <div class="min-w-[12rem] flex-1">
-          <label class="text-muted-foreground mb-1 block text-xs font-medium" for="new-group-name">
-            New group
-          </label>
-          <Input id="new-group-name" bind:value={newGroupName} placeholder="Group name" class="max-w-md" />
-        </div>
-        <Button type="button" onclick={() => void createGroup()}>
+      <div class="mt-4 flex flex-wrap items-center gap-2 border-b border-border pb-4">
+        <Button type="button" onclick={() => (createGroupDialogOpen = true)}>
           <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
           Create group
         </Button>
       </div>
+
+      <Dialog.Root
+        bind:open={createGroupDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) newGroupName = "";
+        }}
+      >
+        <Dialog.Content class="sm:max-w-md">
+          <Dialog.Header>
+            <Dialog.Title>Create group</Dialog.Title>
+            <Dialog.Description>
+              Enter a name for the new client group. Clients can be added after it is created.
+            </Dialog.Description>
+          </Dialog.Header>
+          <div class="grid gap-2">
+            <label class="text-muted-foreground text-xs font-medium" for="new-group-name-dialog">
+              Group name
+            </label>
+            <Input
+              id="new-group-name-dialog"
+              bind:value={newGroupName}
+              placeholder="Group name"
+              onkeydown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void createGroup();
+                }
+              }}
+            />
+          </div>
+          <Dialog.Footer>
+            <Dialog.Close>
+              {#snippet child({ props })}
+                <Button variant="outline" {...props}>Cancel</Button>
+              {/snippet}
+            </Dialog.Close>
+            <Button type="button" onclick={() => void createGroup()}>
+              <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
+              Create
+            </Button>
+          </Dialog.Footer>
+        </Dialog.Content>
+      </Dialog.Root>
 
       <p class="text-muted-foreground mt-2 text-sm">
         Active profile:
