@@ -99,6 +99,15 @@ fn normalize_key_token(token: &str) -> Result<String, String> {
         }
     }
 
+    // Decimal virtual-key code (RegisterHotKey / LL hook vkCode), e.g. Vk134 == F23.
+    if let Some(rest) = upper.strip_prefix("VK") {
+        if let Ok(code) = rest.parse::<u32>() {
+            if (1..=255).contains(&code) {
+                return Ok(format!("Vk{code}"));
+            }
+        }
+    }
+
     if let Some(num) = upper.strip_prefix("NUMPAD") {
         if let Ok(value) = num.parse::<u8>() {
             if value <= 9 {
@@ -154,5 +163,13 @@ mod tests {
     fn rejects_unknown_key() {
         let result = validate_hotkey_string("Ctrl+Foo");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn normalizes_vk_decimal_token() {
+        let result = validate_hotkey_string("Vk134");
+        assert_eq!(result.expect("vk token"), "Vk134");
+        let with_mod = validate_hotkey_string("Ctrl+Vk135");
+        assert_eq!(with_mod.expect("vk with mod"), "Ctrl+Vk135");
     }
 }

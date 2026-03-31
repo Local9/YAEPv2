@@ -1,10 +1,11 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::models::{
-    ClientGroup, DrawerSettings, MumbleLink, MumbleLinksOverlaySettings, MumbleServerGroup, Profile,
-    ThumbnailConfig, ThumbnailSetting,
+    ClientGroup, ClientGroupDetail, ClientGroupMember, DrawerSettings, MumbleLink,
+    MumbleLinksOverlaySettings, MumbleServerGroup, Profile, ThumbnailConfig, ThumbnailSetting,
 };
 
 pub struct DbService {
@@ -127,6 +128,19 @@ impl DbService {
             (ProfileId, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay)
             VALUES (?1, 400, 300, 100, 100, 0.75, '#0078D4', 3, 1)",
             [profile_id],
+        )
+        .map_err(|e| e.to_string())?;
+        let next_cg: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(DisplayOrder), -1) + 1 FROM ClientGroups WHERE ProfileId = ?1",
+                [profile_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR IGNORE INTO ClientGroups (ProfileId, Name, DisplayOrder, CycleForwardHotkey, CycleBackwardHotkey)
+             VALUES (?1, 'Default', ?2, '', '')",
+            params![profile_id, next_cg],
         )
         .map_err(|e| e.to_string())?;
         self.get_profile_by_id(profile_id)
@@ -408,6 +422,15 @@ impl DbService {
         config: ThumbnailConfig,
     ) -> Result<(), String> {
         let conn = self.connection()?;
+        let was_new_thumbnail: bool = conn
+            .query_row(
+                "SELECT 1 FROM ThumbnailSettings WHERE ProfileId = ?1 AND WindowTitle = ?2 LIMIT 1",
+                params![profile_id, &window_title],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .is_none();
         conn.execute(
             "INSERT INTO ThumbnailSettings
              (ProfileId, WindowTitle, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay)
@@ -418,7 +441,7 @@ impl DbService {
                FocusBorderThickness=excluded.FocusBorderThickness, ShowTitleOverlay=excluded.ShowTitleOverlay",
             params![
                 profile_id,
-                window_title,
+                &window_title,
                 config.width,
                 config.height,
                 config.x,
@@ -430,6 +453,37 @@ impl DbService {
             ],
         )
         .map_err(|e| e.to_string())?;
+
+        if was_new_thumbnail {
+            let title = window_title.trim();
+            if !title.is_empty() {
+                let default_group_id: Option<i64> = conn
+                    .query_row(
+                        "SELECT Id FROM ClientGroups WHERE ProfileId = ?1 AND Name = 'Default' LIMIT 1",
+                        [profile_id],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?;
+                if let Some(group_id) = default_group_id {
+                    let next_order: i64 = conn
+                        .query_row(
+                            "SELECT COALESCE(MAX(DisplayOrder), -1) + 1
+                             FROM ClientGroupMembers WHERE GroupId = ?1",
+                            [group_id],
+                            |r| r.get(0),
+                        )
+                        .map_err(|e| e.to_string())?;
+                    conn.execute(
+                        "INSERT OR IGNORE INTO ClientGroupMembers (GroupId, WindowTitle, DisplayOrder)
+                         VALUES (?1, ?2, ?3)",
+                        params![group_id, title, next_order],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -477,23 +531,226 @@ impl DbService {
         Ok(())
     }
 
-    pub fn get_client_group_member_titles(&self, group_id: i64) -> Result<Vec<String>, String> {
+    pub fn ensure_client_group_profile(&self, group_id: i64, profile_id: i64) -> Result<(), String> {
+        let conn = self.connection()?;
+        let pid: Option<i64> = conn
+            .query_row(
+                "SELECT ProfileId FROM ClientGroups WHERE Id = ?1",
+                [group_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        match pid {
+            None => Err("Client group not found".to_string()),
+            Some(p) if p != profile_id => Err("Client group does not belong to this profile".to_string()),
+            Some(_) => Ok(()),
+        }
+    }
+
+    pub fn get_client_group_members(&self, group_id: i64) -> Result<Vec<ClientGroupMember>, String> {
         let conn = self.connection()?;
         let mut stmt = conn
             .prepare(
-                "SELECT WindowTitle FROM ClientGroupMembers
+                "SELECT WindowTitle, DisplayOrder FROM ClientGroupMembers
                  WHERE GroupId = ?1
                  ORDER BY DisplayOrder, WindowTitle",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([group_id], |row| row.get::<_, String>(0))
+            .query_map([group_id], |row| {
+                Ok(ClientGroupMember {
+                    window_title: row.get(0)?,
+                    display_order: row.get(1)?,
+                })
+            })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
             out.push(row.map_err(|e| e.to_string())?);
         }
         Ok(out)
+    }
+
+    pub fn get_client_group_member_titles(&self, group_id: i64) -> Result<Vec<String>, String> {
+        Ok(self
+            .get_client_group_members(group_id)?
+            .into_iter()
+            .map(|m| m.window_title)
+            .collect())
+    }
+
+    pub fn get_client_groups_detailed(&self, profile_id: i64) -> Result<Vec<ClientGroupDetail>, String> {
+        let groups = self.get_client_groups(profile_id)?;
+        let mut out = Vec::new();
+        for g in groups {
+            let members = self.get_client_group_members(g.id)?;
+            out.push(ClientGroupDetail {
+                id: g.id,
+                profile_id: g.profile_id,
+                name: g.name,
+                display_order: g.display_order,
+                cycle_forward_hotkey: g.cycle_forward_hotkey,
+                cycle_backward_hotkey: g.cycle_backward_hotkey,
+                members,
+            });
+        }
+        Ok(out)
+    }
+
+    pub fn create_client_group(&self, profile_id: i64, name: String) -> Result<ClientGroupDetail, String> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err("Group name cannot be empty".to_string());
+        }
+        let conn = self.connection()?;
+        let exists: Option<i64> = conn
+            .query_row(
+                "SELECT Id FROM ClientGroups WHERE ProfileId = ?1 AND Name = ?2 LIMIT 1",
+                params![profile_id, trimmed],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if exists.is_some() {
+            return Err("A client group with this name already exists".to_string());
+        }
+        let next_order: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(DisplayOrder), -1) + 1 FROM ClientGroups WHERE ProfileId = ?1",
+                [profile_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO ClientGroups (ProfileId, Name, DisplayOrder, CycleForwardHotkey, CycleBackwardHotkey)
+             VALUES (?1, ?2, ?3, '', '')",
+            params![profile_id, trimmed, next_order],
+        )
+        .map_err(|e| e.to_string())?;
+        let id = conn.last_insert_rowid();
+        Ok(ClientGroupDetail {
+            id,
+            profile_id,
+            name: trimmed.to_string(),
+            display_order: next_order,
+            cycle_forward_hotkey: String::new(),
+            cycle_backward_hotkey: String::new(),
+            members: Vec::new(),
+        })
+    }
+
+    pub fn delete_client_group(&self, profile_id: i64, group_id: i64) -> Result<(), String> {
+        self.ensure_client_group_profile(group_id, profile_id)?;
+        let conn = self.connection()?;
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ClientGroups WHERE ProfileId = ?1",
+                [profile_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if count <= 1 {
+            return Err("Cannot delete the last client group".to_string());
+        }
+        conn.execute("DELETE FROM ClientGroups WHERE Id = ?1", [group_id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn add_client_group_member(
+        &self,
+        profile_id: i64,
+        group_id: i64,
+        window_title: String,
+    ) -> Result<(), String> {
+        self.ensure_client_group_profile(group_id, profile_id)?;
+        let title = window_title.trim();
+        if title.is_empty() {
+            return Err("Window title cannot be empty".to_string());
+        }
+        let conn = self.connection()?;
+        let next_order: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(DisplayOrder), -1) + 1 FROM ClientGroupMembers WHERE GroupId = ?1",
+                [group_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO ClientGroupMembers (GroupId, WindowTitle, DisplayOrder) VALUES (?1, ?2, ?3)",
+            params![group_id, title, next_order],
+        )
+        .map_err(|e| {
+            if e.to_string().contains("UNIQUE") {
+                "This client is already in the group".to_string()
+            } else {
+                e.to_string()
+            }
+        })?;
+        Ok(())
+    }
+
+    pub fn remove_client_group_member(
+        &self,
+        profile_id: i64,
+        group_id: i64,
+        window_title: String,
+    ) -> Result<(), String> {
+        self.ensure_client_group_profile(group_id, profile_id)?;
+        let conn = self.connection()?;
+        conn.execute(
+            "DELETE FROM ClientGroupMembers WHERE GroupId = ?1 AND WindowTitle = ?2",
+            params![group_id, window_title.trim()],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn reorder_client_group_members(
+        &self,
+        profile_id: i64,
+        group_id: i64,
+        window_titles_in_order: Vec<String>,
+    ) -> Result<(), String> {
+        self.ensure_client_group_profile(group_id, profile_id)?;
+        let mut conn = self.connection()?;
+        let current: HashSet<String> = {
+            let mut stmt = conn
+                .prepare("SELECT WindowTitle FROM ClientGroupMembers WHERE GroupId = ?1")
+                .map_err(|e| e.to_string())?;
+            let titles: HashSet<String> = stmt
+                .query_map([group_id], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<_, _>>()
+                .map_err(|e| e.to_string())?;
+            titles
+        };
+        let ordered: Vec<String> = window_titles_in_order
+            .into_iter()
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
+        let new_set: HashSet<String> = ordered.iter().cloned().collect();
+        if new_set.len() != ordered.len() {
+            return Err("Duplicate window titles in order list".to_string());
+        }
+        if current != new_set {
+            return Err("Order list must contain exactly the current group members".to_string());
+        }
+        if current.len() != ordered.len() {
+            return Err("Order list must contain exactly the current group members".to_string());
+        }
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        for (i, title) in ordered.iter().enumerate() {
+            tx.execute(
+                "UPDATE ClientGroupMembers SET DisplayOrder = ?1 WHERE GroupId = ?2 AND WindowTitle = ?3",
+                params![i as i64, group_id, title],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub fn get_mumble_links(&self) -> Result<Vec<MumbleLink>, String> {

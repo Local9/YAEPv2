@@ -6,7 +6,9 @@ edition = "2021"
 
 [lib]
 name = "yaep_rust_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# rlib only for the Tauri binary: avoids a separate cdylib with duplicate statics (hooks, CAPTURE).
+# Add staticlib/cdylib when building for iOS/Android if needed.
+crate-type = ["lib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -27,6 +29,7 @@ windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Security",
   "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Input",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",

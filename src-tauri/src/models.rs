@@ -51,6 +51,25 @@ pub struct ClientGroup {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ClientGroupMember {
+    pub window_title: String,
+    pub display_order: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientGroupDetail {
+    pub id: i64,
+    pub profile_id: i64,
+    pub name: String,
+    pub display_order: i64,
+    pub cycle_forward_hotkey: String,
+    pub cycle_backward_hotkey: String,
+    pub members: Vec<ClientGroupMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MumbleServerGroup {
     pub id: i64,
     pub name: String,

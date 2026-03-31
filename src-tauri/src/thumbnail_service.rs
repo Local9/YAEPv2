@@ -124,6 +124,39 @@ impl ThumbnailService {
         state.focused_pid = None;
         state.thumbnails_by_pid.clear();
     }
+
+    /// True if the foreground HWND belongs to a PID we are currently tracking as a thumbnail client.
+    pub fn is_foreground_a_runtime_thumbnail(&self, windows: &WindowService) -> bool {
+        let Some(fg) = windows.foreground_window_snapshot() else {
+            return false;
+        };
+        let Ok(state) = self.state.lock() else {
+            return false;
+        };
+        state.thumbnails_by_pid.contains_key(&fg.pid)
+    }
+
+    /// Focus the tracked client whose window title matches (trimmed). Uses known PID/HWND from the runtime map.
+    pub fn focus_thumbnail_client_by_title(
+        &self,
+        window_title: &str,
+        windows: &WindowService,
+    ) -> Result<(), String> {
+        let t = window_title.trim();
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| "thumbnail runtime lock poisoned".to_string())?;
+        let Some((&pid, _thumb)) = state
+            .thumbnails_by_pid
+            .iter()
+            .find(|(_, th)| th.title.trim() == t)
+        else {
+            return Err("no runtime thumbnail for that title".to_string());
+        };
+        drop(state);
+        windows.activate_window_by_pid(pid)
+    }
 }
 
 fn refresh_runtime_thumbnails(

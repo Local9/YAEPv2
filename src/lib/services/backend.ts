@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ClientGroup,
+  ClientGroupDetail,
   HealthSnapshot,
   GridLayoutPayload,
   GridLayoutPreviewItem,
@@ -57,6 +58,28 @@ export const backend = {
   },
   getClientGroups(profileId: number): Promise<ClientGroup[]> {
     return invoke("get_client_groups", { profileId });
+  },
+  getClientGroupsDetailed(profileId: number): Promise<ClientGroupDetail[]> {
+    return invoke("get_client_groups_detailed", { profileId });
+  },
+  createClientGroup(profileId: number, name: string): Promise<ClientGroupDetail> {
+    return invoke("create_client_group", { profileId, name });
+  },
+  deleteClientGroup(profileId: number, groupId: number): Promise<void> {
+    return invoke("delete_client_group", { profileId, groupId });
+  },
+  addClientGroupMember(profileId: number, groupId: number, windowTitle: string): Promise<void> {
+    return invoke("add_client_group_member", { profileId, groupId, windowTitle });
+  },
+  removeClientGroupMember(profileId: number, groupId: number, windowTitle: string): Promise<void> {
+    return invoke("remove_client_group_member", { profileId, groupId, windowTitle });
+  },
+  reorderClientGroupMembers(
+    profileId: number,
+    groupId: number,
+    windowTitlesInOrder: string[]
+  ): Promise<void> {
+    return invoke("reorder_client_group_members", { profileId, groupId, windowTitlesInOrder });
   },
   updateClientGroupHotkeys(
     groupId: number,

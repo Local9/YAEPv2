@@ -25,9 +25,9 @@ use crate::thumbnail_webview_overlay::ThumbnailOverlayStatePayload;
 use crate::eve_profile_tools::EveProfileToolsService;
 use crate::hotkeys::HotkeyService;
 use crate::models::{
-    ClientGroup, DrawerSettings, GridLayoutPayload, GridLayoutPreviewItem, HealthSnapshot,
-    MonitorInfoDto, MumbleLink,
-    MumbleLinksOverlaySettings, MumbleServerGroup, Profile, ThumbnailConfig, ThumbnailSetting,
+    ClientGroup, ClientGroupDetail, DrawerSettings, GridLayoutPayload, GridLayoutPreviewItem,
+    HealthSnapshot, MonitorInfoDto, MumbleLink, MumbleLinksOverlaySettings, MumbleServerGroup, Profile,
+    ThumbnailConfig, ThumbnailSetting,
 };
 use crate::thumbnail_service::ThumbnailService;
 use crate::windows::WindowService;
@@ -184,6 +184,64 @@ fn get_client_groups(state: State<'_, AppState>, profile_id: i64) -> Result<Vec<
 }
 
 #[tauri::command]
+fn get_client_groups_detailed(
+    state: State<'_, AppState>,
+    profile_id: i64,
+) -> Result<Vec<ClientGroupDetail>, String> {
+    state.db.get_client_groups_detailed(profile_id)
+}
+
+#[tauri::command]
+fn create_client_group(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    name: String,
+) -> Result<ClientGroupDetail, String> {
+    state.db.create_client_group(profile_id, name)
+}
+
+#[tauri::command]
+fn delete_client_group(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    group_id: i64,
+) -> Result<(), String> {
+    state.db.delete_client_group(profile_id, group_id)
+}
+
+#[tauri::command]
+fn add_client_group_member(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    group_id: i64,
+    window_title: String,
+) -> Result<(), String> {
+    state.db.add_client_group_member(profile_id, group_id, window_title)
+}
+
+#[tauri::command]
+fn remove_client_group_member(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    group_id: i64,
+    window_title: String,
+) -> Result<(), String> {
+    state.db.remove_client_group_member(profile_id, group_id, window_title)
+}
+
+#[tauri::command]
+fn reorder_client_group_members(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    group_id: i64,
+    window_titles_in_order: Vec<String>,
+) -> Result<(), String> {
+    state
+        .db
+        .reorder_client_group_members(profile_id, group_id, window_titles_in_order)
+}
+
+#[tauri::command]
 fn update_client_group_hotkeys(
     state: State<'_, AppState>,
     group_id: i64,
@@ -203,18 +261,31 @@ pub(crate) fn cycle_client_group_internal(
     state: &AppState,
     group_id: i64,
     direction: &str,
+    only_when_foreground_is_monitored: bool,
 ) -> Result<(), String> {
+    if only_when_foreground_is_monitored
+        && !state
+            .thumbnail_service
+            .is_foreground_a_runtime_thumbnail(&state.window_service)
+    {
+        if diag::enabled() {
+            diag::trace(
+                "hotkeys",
+                "cycle_client_group: skipped (foreground not a PID in thumbnail runtime map)",
+            );
+        }
+        return Ok(());
+    }
+
     let members = state.db.get_client_group_member_titles(group_id)?;
     if members.is_empty() {
         return Ok(());
     }
 
-    let windows = state.window_service.enumerate_windows();
-    let foreground_pid = state.window_service.foreground_window_pid();
-    let current_title = windows
-        .iter()
-        .find(|w| Some(w.pid) == foreground_pid)
-        .map(|w| w.title.clone());
+    let current_title = state
+        .window_service
+        .foreground_window_snapshot()
+        .map(|w| w.title);
 
     let step = if direction.eq_ignore_ascii_case("backward") {
         -1isize
@@ -224,11 +295,22 @@ pub(crate) fn cycle_client_group_internal(
 
     let current_index = current_title
         .as_ref()
-        .and_then(|title| members.iter().position(|m| m == title))
+        .and_then(|title| {
+            members
+                .iter()
+                .position(|m| m.trim() == title.trim())
+        })
         .unwrap_or(0) as isize;
     let next_index = (current_index + step).rem_euclid(members.len() as isize) as usize;
-    let next_title = &members[next_index];
+    let next_title = members[next_index].trim();
 
+    if state
+        .thumbnail_service
+        .focus_thumbnail_client_by_title(next_title, &state.window_service)
+        .is_ok()
+    {
+        return Ok(());
+    }
     state.window_service.activate_window_by_title(next_title)?;
     Ok(())
 }
@@ -239,7 +321,7 @@ fn cycle_client_group(
     group_id: i64,
     direction: String,
 ) -> Result<(), String> {
-    cycle_client_group_internal(&state, group_id, &direction)
+    cycle_client_group_internal(&state, group_id, &direction, false)
 }
 
 pub(crate) fn open_mumble_link_internal(state: &AppState, link_id: i64) -> Result<(), String> {
@@ -552,8 +634,9 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             {
                 diag::trace("boot", "global_hotkeys: set_app_handle + spawn_thread");
+                let db_for_hotkeys = app.state::<AppState>().db.clone();
                 global_hotkeys::set_app_handle(&app.handle());
-                global_hotkeys::spawn_thread(app.handle().clone());
+                global_hotkeys::spawn_thread(db_for_hotkeys);
                 global_hotkeys::request_refresh();
                 diag::trace("boot", "global_hotkeys scheduled");
             }
@@ -584,6 +667,12 @@ pub fn run() {
             get_thumbnail_settings,
             save_thumbnail_setting,
             get_client_groups,
+            get_client_groups_detailed,
+            create_client_group,
+            delete_client_group,
+            add_client_group_member,
+            remove_client_group_member,
+            reorder_client_group_members,
             update_client_group_hotkeys,
             cycle_client_group,
             get_mumble_links,

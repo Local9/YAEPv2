@@ -31,6 +31,15 @@ export type ClientGroup = {
   cycleBackwardHotkey: string;
 };
 
+export type ClientGroupMember = {
+  windowTitle: string;
+  displayOrder: number;
+};
+
+export type ClientGroupDetail = ClientGroup & {
+  members: ClientGroupMember[];
+};
+
 export type MumbleServerGroup = {
   id: number;
   name: string;
