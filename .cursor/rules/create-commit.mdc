@@ -8,7 +8,12 @@ alwaysApply: true
 When the user asks to **create a commit**, **write a commit message**, or similar (e.g. "commit message", "suggest a commit"):
 
 1. **Always include one fenced code block** (use the `text` language tag) that contains **only** the raw commit message so the developer can **select and copy it in one action**:
-   - Line 1: **subject** (one line, typically under ~72 characters; imperative mood; no trailing period)
+   - Line 1: **subject** following **Conventional Commits** (this repo’s standard):
+     - Pattern: `type(scope): short imperative description` or, when scope does not help, `type: short imperative description`.
+     - **type** (pick one): `feat` (user-visible behavior or capability), `fix` (bug fix), `chore` (tooling, deps, config), `docs`, `refactor`, `test`, `style` (format-only), `perf`, `ci`, `build`.
+     - **scope** (optional but preferred): area touched, lowercase, e.g. `tauri`, `ui`, `grid-layout`, `thumbnail-overlay`. Omit scope only if it would be vague or redundant.
+     - Lowercase type and scope; imperative mood; **no trailing period** on the subject; aim for **~72 characters or less** on line 1.
+     - Examples: `feat(grid-layout): add monitor labels to thumbnail anchor`, `fix(tauri): global hotkeys when another app is focused`, `chore: update dependency lockfile`.
    - Line 2: **blank line**
    - Remaining lines: **body** (what changed and why; plain text, `-` bullets allowed)
    - Do not put headings, bold, or other Markdown inside this block.
