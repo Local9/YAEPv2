@@ -738,14 +738,37 @@ fn build_grid_layout_preview(
         .selected_monitor_index
         .and_then(monitors::work_area_offset)
         .unwrap_or((0, 0));
+
+    let (start_x, start_y) = if let Some(ref anchor_title) = payload.grid_anchor_window_title {
+        let idx = settings
+            .iter()
+            .position(|s| s.window_title == *anchor_title)
+            .ok_or_else(|| {
+                format!(
+                    "Initial thumbnail not in grid scope (title missing or filtered out): {}",
+                    anchor_title
+                )
+            })?;
+        let anchor = settings.remove(idx);
+        let ax = anchor.config.x;
+        let ay = anchor.config.y;
+        settings.insert(0, anchor);
+        (
+            ax.saturating_sub(ox as i64),
+            ay.saturating_sub(oy as i64),
+        )
+    } else {
+        (payload.grid_start_x, payload.grid_start_y)
+    };
+
     let mut preview = Vec::new();
     for (index, setting) in settings.iter().enumerate() {
         let col = (index as i64) % payload.grid_columns;
         let row = (index as i64) / payload.grid_columns;
         preview.push(GridLayoutPreviewItem {
             window_title: setting.window_title.clone(),
-            x: payload.grid_start_x + (col * payload.grid_cell_width) + ox as i64,
-            y: payload.grid_start_y + (row * cell_height) + oy as i64,
+            x: start_x + (col * payload.grid_cell_width) + ox as i64,
+            y: start_y + (row * cell_height) + oy as i64,
             width: payload.grid_cell_width,
             height: cell_height,
         });

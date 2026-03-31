@@ -97,6 +97,8 @@ export type GridLayoutPayload = {
   selectedGroupId: number | null;
   onlyAffectActiveThumbnails: boolean;
   selectedMonitorIndex?: number | null;
+  /** Anchors grid origin and order: first cell uses this thumbnail's saved position. */
+  gridAnchorWindowTitle?: string | null;
 };
 
 export type GridLayoutPreviewItem = {

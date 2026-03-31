@@ -122,6 +122,10 @@ pub struct GridLayoutPayload {
     pub only_affect_active_thumbnails: bool,
     #[serde(default)]
     pub selected_monitor_index: Option<i64>,
+    /// When set, that thumbnail is placed first in the grid and its saved position
+    /// defines the grid origin (after subtracting the selected monitor work-area offset).
+    #[serde(default)]
+    pub grid_anchor_window_title: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
