@@ -1,0 +1,19 @@
+---
+description: How to respond when the user asks for a commit message (copy-paste block, subject + body)
+globs: "**/*"
+alwaysApply: true
+---
+# Create commit (commit messages)
+
+When the user asks to **create a commit**, **write a commit message**, or similar (e.g. "commit message", "suggest a commit"):
+
+1. **Always include one fenced code block** (use the `text` language tag) that contains **only** the raw commit message so the developer can **select and copy it in one action**:
+   - Line 1: **subject** (one line, typically under ~72 characters; imperative mood; no trailing period)
+   - Line 2: **blank line**
+   - Remaining lines: **body** (what changed and why; plain text, `-` bullets allowed)
+   - Do not put headings, bold, or other Markdown inside this block.
+2. **Below the block** (optional, one short sentence): say that they can paste the whole block into a single commit-message field, or put line 1 in “subject/summary” and the rest in “body/description” if the IDE splits fields.
+3. Do **not** include `git` or other shell commands unless the developer explicitly asks for CLI instructions.
+4. **Do not run** `git`, `gh`, hooks installers, or any shell commands yourself unless they explicitly ask you to execute commands despite the command-approval rule.
+
+General command behavior (no shells, ask dev to run commands) remains in `command-approval-only.mdc`.

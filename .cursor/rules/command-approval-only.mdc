@@ -1,6 +1,7 @@
 ---
 description: Do not run commands. Provide commands for the user to run, then wait for their response.
-globs: 
+globs: "**/*"
+alwaysApply: true
 ---
 # Command Approval Only
 
@@ -8,7 +9,10 @@ globs:
 Do not run any shell or terminal commands.
 
 ## Provide Commands Instead
-When command-line actions are needed, provide the exact commands for the user to run.
+When command-line actions are needed, provide the exact commands and explicitly ask the developer to run them.
 
 ## Wait For User Response
 After providing commands, wait for the user to respond with results or confirmation before continuing.
+
+## Commit messages
+When the user wants a **commit message** only (not terminal commands), follow **`create-commit.mdc`**.
