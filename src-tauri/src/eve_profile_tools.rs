@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use sysinfo::{ProcessesToUpdate, System};
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 use zip::ZipWriter;
 
@@ -14,10 +14,12 @@ impl EveProfileToolsService {
     /// Public ESI: character name by ID (no auth).
     pub fn fetch_character_name(&self, character_id: u64) -> Result<String, String> {
         let url = format!("https://esi.evetech.net/latest/characters/{character_id}/");
-        let v: Value = ureq::get(&url)
+        let mut response = ureq::get(&url)
             .call()
-            .map_err(|e| e.to_string())?
-            .into_json()
+            .map_err(|e| e.to_string())?;
+        let v: Value = response
+            .body_mut()
+            .read_json()
             .map_err(|e| e.to_string())?;
         v.get("name")
             .and_then(|x| x.as_str())
@@ -125,7 +127,7 @@ impl EveProfileToolsService {
 
         let file = fs::File::create(&output).map_err(|e| e.to_string())?;
         let mut zip = ZipWriter::new(file);
-        let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
         for profile_dir in &profile_dirs {
             self.add_directory_to_zip(profile_dir, &base, &mut zip, options)?;
@@ -193,7 +195,7 @@ impl EveProfileToolsService {
         source_dir: &Path,
         base_dir: &Path,
         zip: &mut ZipWriter<fs::File>,
-        options: FileOptions,
+        options: SimpleFileOptions,
     ) -> Result<(), String> {
         for entry in fs::read_dir(source_dir).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
