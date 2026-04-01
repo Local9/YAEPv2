@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { backend } from "$services/backend";
   import type { Profile } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
+  import * as Dialog from "$lib/components/ui/dialog";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import {
     Card,
@@ -23,24 +25,45 @@
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import CheckIcon from "@lucide/svelte/icons/check";
+  import KeyboardIcon from "@lucide/svelte/icons/keyboard";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import UsersIcon from "@lucide/svelte/icons/users";
 
+  const PROFILE_SWITCH_CAPTURE = "profileSwitch";
+
+  interface HotkeyCapturedPayload {
+    value: string;
+    captureType: string;
+    targetId: number | null;
+  }
+
   let profiles = $state<Profile[]>([]);
+  let clientGroupCounts = $state<Record<number, number>>({});
   let newProfileName = $state("");
   let status = $state("");
   let error = $state("");
+  let createProfileDialogOpen = $state(false);
+  let captureProfileHotkeyId = $state<number | null>(null);
 
   async function refreshProfiles() {
     profiles = await backend.getProfiles();
+    const counts = await Promise.all(
+      profiles.map(async (profile) => ({
+        profileId: profile.id,
+        count: (await backend.getClientGroups(profile.id)).length,
+      })),
+    );
+    clientGroupCounts = Object.fromEntries(counts.map((item) => [item.profileId, item.count]));
   }
 
   async function addProfile() {
-    if (!newProfileName.trim()) return;
+    const name = newProfileName.trim();
+    if (!name) return;
     try {
-      await backend.createProfile(newProfileName.trim());
+      await backend.createProfile(name);
       newProfileName = "";
+      createProfileDialogOpen = false;
       error = "";
       status = "Profile created";
       await refreshProfiles();
@@ -53,7 +76,7 @@
     try {
       await backend.setCurrentProfile(profileId);
       error = "";
-      status = "Active profile updated";
+      status = "Active profile updated and matching thumbnails refreshed";
       await refreshProfiles();
     } catch (e) {
       error = String(e);
@@ -82,7 +105,50 @@
     }
   }
 
-  onMount(refreshProfiles);
+  async function startProfileHotkeyCapture(profileId: number) {
+    captureProfileHotkeyId = profileId;
+    error = "";
+    try {
+      await backend.hotkeysCaptureStart(PROFILE_SWITCH_CAPTURE, profileId);
+    } catch (e) {
+      error = String(e);
+      captureProfileHotkeyId = null;
+    }
+  }
+
+  function stopProfileHotkeyCapture() {
+    captureProfileHotkeyId = null;
+    void backend.hotkeysCaptureStop();
+  }
+
+  onMount(() => {
+    void refreshProfiles();
+    let unlistenProfileChanged: UnlistenFn | undefined;
+    let unlistenHotkeyCaptured: UnlistenFn | undefined;
+
+    void listen<{ profileId: number }>("profileChanged", () => {
+      status = "Profile changed by hotkey; matching thumbnails refreshed";
+      error = "";
+      void refreshProfiles();
+    }).then((unlisten) => {
+      unlistenProfileChanged = unlisten;
+    });
+
+    void listen<HotkeyCapturedPayload>("hotkeyCaptured", (event) => {
+      const payload = event.payload;
+      if (payload.captureType !== PROFILE_SWITCH_CAPTURE || payload.targetId == null) return;
+      captureProfileHotkeyId = null;
+      void saveHotkey(payload.targetId, payload.value);
+    }).then((unlisten) => {
+      unlistenHotkeyCaptured = unlisten;
+    });
+
+    return () => {
+      unlistenProfileChanged?.();
+      unlistenHotkeyCaptured?.();
+      stopProfileHotkeyCapture();
+    };
+  });
 </script>
 
 <Card class="shadow-sm">
@@ -99,12 +165,58 @@
   </CardHeader>
   <CardContent>
     <div class="mb-4 flex flex-wrap items-center gap-2">
-      <Input class="max-w-xs min-w-0 flex-1" bind:value={newProfileName} placeholder="New profile name" />
-      <Button type="button" onclick={addProfile}>
+      <Button type="button" onclick={() => (createProfileDialogOpen = true)}>
         <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
-        Add
+        Create Profile
       </Button>
     </div>
+
+    <Dialog.Root
+      bind:open={createProfileDialogOpen}
+      onOpenChange={(open) => {
+        if (!open) newProfileName = "";
+      }}
+    >
+      <Dialog.Content class="sm:max-w-md">
+        <Dialog.Header>
+          <Dialog.Title>Create profile</Dialog.Title>
+          <Dialog.Description>
+            Enter a name for the new profile. Client groups, thumbnail settings, and process rules are
+            managed per profile.
+          </Dialog.Description>
+        </Dialog.Header>
+        <div class="grid gap-2">
+          <label class="text-muted-foreground text-xs font-medium" for="new-profile-name-dialog">
+            Profile name
+          </label>
+          <Input
+            id="new-profile-name-dialog"
+            bind:value={newProfileName}
+            placeholder="Profile name"
+            onkeydown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void addProfile();
+              }
+            }}
+          />
+        </div>
+        <Dialog.Footer>
+          <Button
+            type="button"
+            variant="outline"
+            onclick={() => {
+              createProfileDialogOpen = false;
+            }}
+          >
+            Cancel
+          </Button>
+          <Button type="button" onclick={addProfile} disabled={!newProfileName.trim()}>
+            Create
+          </Button>
+        </Dialog.Footer>
+      </Dialog.Content>
+    </Dialog.Root>
 
     {#if status}
       <Alert class="border-primary/30 bg-primary/5">
@@ -126,6 +238,7 @@
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
+            <TableHead>Client groups</TableHead>
             <TableHead>Hotkey</TableHead>
             <TableHead>Active</TableHead>
             <TableHead>Actions</TableHead>
@@ -135,14 +248,25 @@
           {#each profiles as profile (profile.id)}
             <TableRow>
               <TableCell>{profile.name}</TableCell>
+              <TableCell>{clientGroupCounts[profile.id] ?? 0}</TableCell>
               <TableCell>
-                <Input
-                  class="min-w-[8rem]"
-                  value={profile.switchHotkey}
-                  onblur={(e) =>
-                    saveHotkey(profile.id, (e.currentTarget as HTMLInputElement).value)}
-                  placeholder="Ctrl+Alt+F1"
-                />
+                <div class="flex min-w-48 items-center gap-2">
+                  <Input
+                    class="min-w-32"
+                    value={profile.switchHotkey}
+                    onblur={(e) =>
+                      saveHotkey(profile.id, (e.currentTarget as HTMLInputElement).value)}
+                    placeholder="Ctrl+Alt+F1"
+                  />
+                  <Button
+                    type="button"
+                    variant={captureProfileHotkeyId === profile.id ? "default" : "outline"}
+                    onclick={() => startProfileHotkeyCapture(profile.id)}
+                  >
+                    <KeyboardIcon class="size-4 shrink-0" aria-hidden="true" />
+                    {captureProfileHotkeyId === profile.id ? "Press keys..." : "Capture"}
+                  </Button>
+                </div>
               </TableCell>
               <TableCell>{profile.isActive ? "Yes" : "No"}</TableCell>
               <TableCell>
