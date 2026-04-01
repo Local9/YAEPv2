@@ -7,13 +7,16 @@
 //! `sync_overlay_bounds_win` updates both windows with `SetWindowPos` to keep geometry and stacking
 //! stable: **DWM thumbnail (bottom) -> anchor (middle) -> overlay (top)**.
 
+#[cfg(target_os = "windows")]
 use std::ffi::c_void;
 
 use serde::Serialize;
 use tauri::window::Color;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use uuid::Uuid;
+#[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{HWND, RECT};
+#[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, SetWindowPos, SWP_NOACTIVATE};
 
 use crate::models::ThumbnailConfig;
@@ -182,6 +185,7 @@ pub fn set_overlay_window_title(app: &AppHandle, label: &str, title: &str) {
 }
 
 /// Match overlay to the thumbnail window’s screen rect and stack **directly above** it (one `SetWindowPos`).
+#[cfg(target_os = "windows")]
 pub fn sync_overlay_bounds_win(app: &AppHandle, thumbnail_window_hwnd: isize, overlay_label: &str) {
     if thumbnail_window_hwnd == 0 || overlay_label.is_empty() {
         return;
@@ -189,9 +193,7 @@ pub fn sync_overlay_bounds_win(app: &AppHandle, thumbnail_window_hwnd: isize, ov
     let Some(overlay_win) = app.get_webview_window(overlay_label) else {
         return;
     };
-    #[cfg(target_os = "windows")]
     let anchor_label = overlay_anchor_window_label_from_overlay_label(overlay_label);
-    #[cfg(target_os = "windows")]
     let Some(anchor_win) = app.get_webview_window(&anchor_label) else {
         return;
     };
@@ -201,47 +203,43 @@ pub fn sync_overlay_bounds_win(app: &AppHandle, thumbnail_window_hwnd: isize, ov
     }
     let w = (rect.right - rect.left).max(1);
     let h = (rect.bottom - rect.top).max(1);
-    #[cfg(target_os = "windows")]
-    {
-        let Ok(anchor_hwnd) = anchor_win.hwnd() else {
-            return;
-        };
-        let Ok(overlay_hwnd) = overlay_win.hwnd() else {
-            return;
-        };
-        unsafe {
-            let _ = SetWindowPos(
-                anchor_hwnd,
-                Some(HWND(thumbnail_window_hwnd as *mut c_void)),
-                rect.left,
-                rect.top,
-                w,
-                h,
-                SWP_NOACTIVATE,
-            );
-            let _ = SetWindowPos(
-                overlay_hwnd,
-                Some(anchor_hwnd),
-                rect.left,
-                rect.top,
-                w,
-                h,
-                SWP_NOACTIVATE,
-            );
-        }
+    let Ok(anchor_hwnd) = anchor_win.hwnd() else {
+        return;
+    };
+    let Ok(overlay_hwnd) = overlay_win.hwnd() else {
+        return;
+    };
+    unsafe {
+        let _ = SetWindowPos(
+            anchor_hwnd,
+            Some(HWND(thumbnail_window_hwnd as *mut c_void)),
+            rect.left,
+            rect.top,
+            w,
+            h,
+            SWP_NOACTIVATE,
+        );
+        let _ = SetWindowPos(
+            overlay_hwnd,
+            Some(anchor_hwnd),
+            rect.left,
+            rect.top,
+            w,
+            h,
+            SWP_NOACTIVATE,
+        );
     }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = overlay_win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-            rect.left, rect.top,
-        )));
-        let _ = overlay_win.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-            w as u32, h as u32,
-        )));
-    }
-    #[cfg(target_os = "windows")]
     let _ = anchor_win.set_ignore_cursor_events(true);
     let _ = overlay_win.set_ignore_cursor_events(true);
+}
+
+/// Without Win32 thumbnail HWNDs, overlay geometry cannot be synced to the DWM surface.
+#[cfg(not(target_os = "windows"))]
+pub fn sync_overlay_bounds_win(
+    _app: &AppHandle,
+    _thumbnail_window_hwnd: isize,
+    _overlay_label: &str,
+) {
 }
 
 pub fn overlay_state_payload(
