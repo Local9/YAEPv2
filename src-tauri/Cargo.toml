@@ -27,7 +27,7 @@ opener = "0.7"
 ureq = { version = "2.12", default-features = false, features = ["json"] }
 tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
-zip = "0.6"
+zip = "8.4"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
