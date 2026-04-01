@@ -17,7 +17,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 use crate::db::DbService;
 use crate::dwm::DwmService;
@@ -794,6 +794,36 @@ pub fn run() {
     }
 }
 
+/// Tray menu callbacks can run in a re-entrant event-loop context on Windows; showing the
+/// webview window synchronously often fails. Queue on the main loop via a fresh thread so
+/// `run_on_main_thread` uses the proxy path (next event-loop turn).
+fn show_main_window_from_tray<R: Runtime>(app: &AppHandle<R>) {
+    #[cfg(target_os = "windows")]
+    {
+        let app_h = app.clone();
+        std::thread::spawn(move || {
+            let h = app_h.clone();
+            if let Err(e) = app_h.run_on_main_thread(move || {
+                if let Some(window) = h.get_webview_window("main") {
+                    let _ = window.unminimize();
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }) {
+                eprintln!("tray Show: run_on_main_thread failed: {e}");
+            }
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
+}
+
 fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let state = app.state::<AppState>();
     let profiles = state.db.get_profiles().unwrap_or_default();
@@ -822,15 +852,21 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let menu = menu_builder.item(&exit_item).build()?;
 
     let app_handle = app.handle().clone();
-    let tray = TrayIconBuilder::new()
-        .menu(&menu)
+    let mut tray_builder = TrayIconBuilder::new().menu(&menu).tooltip(
+        app.package_info().name.clone(),
+    );
+    if let Some(icon) = app.default_window_icon() {
+        tray_builder = tray_builder.icon(icon.clone());
+    } else {
+        eprintln!(
+            "tray: no default_window_icon; add icons under src-tauri/icons (see tauri.conf.json bundle.icon)"
+        );
+    }
+    let tray = tray_builder
         .on_menu_event(move |app, event| {
             let id = event.id.as_ref();
             if id == "tray.show" {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                show_main_window_from_tray(app);
                 return;
             }
             if id == "tray.exit" {
