@@ -267,6 +267,11 @@ impl DwmService {
         self.run_on_main(move || set_focused_thumbnail_locked(&inner, focused_pid));
     }
 
+    pub fn ensure_missing_runtime_overlays(&self, max_to_create: usize) {
+        let inner = self.inner.clone();
+        self.run_on_main(move || ensure_missing_runtime_overlays_locked(&inner, max_to_create));
+    }
+
     /// Current overlay payload for a thumbnail (for webview hydration if the first `emit` was missed).
     pub fn snapshot_thumbnail_overlay_state(
         &self,
@@ -422,34 +427,17 @@ fn register_runtime_thumbnail_locked(
     let class_name = register_thumbnail_window_class();
     let mut state = inner.runtime.lock().expect("dwm runtime lock poisoned");
 
-    let app_for_overlay = dwm_app_handle();
     let entry = state.entry(pid).or_insert_with(|| {
         diag::trace(
             "dwm",
-            &format!("pid={pid} new entry: native ThumbnailWindow + ThumbnailOverlayWindow (Tauri)"),
+            &format!("pid={pid} new entry: native ThumbnailWindow (overlay deferred)"),
         );
         let thumbnail_window_hwnd = create_thumbnail_window(
             class_name,
             "YAEP Thumbnail",
             false,
         );
-        let (overlay_id, overlay_label) = if let Some(ref app) = app_for_overlay {
-            let oid = thumbnail_webview_overlay::new_overlay_id();
-            match thumbnail_webview_overlay::open_thumbnail_overlay_window(
-                app,
-                &oid,
-                pid,
-                thumbnail_window_hwnd,
-            ) {
-                Ok(label) => (oid, label),
-                Err(e) => {
-                    eprintln!("YAEP: thumbnail overlay webview: {e}");
-                    (String::new(), String::new())
-                }
-            }
-        } else {
-            (String::new(), String::new())
-        };
+        let (overlay_id, overlay_label) = (String::new(), String::new());
         diag::trace(
             "dwm",
             &format!("pid={pid} thumbnail_window_hwnd=0x{thumbnail_window_hwnd:x} overlay_label={overlay_label}"),
@@ -562,6 +550,7 @@ fn register_runtime_thumbnail_locked(
     unsafe {
         let _ = ShowWindow(hwnd_from_isize(entry.thumbnail_window_hwnd), SW_SHOWNA);
     }
+
     if let Some(app) = dwm_app_handle() {
         thumbnail_webview_overlay::show_overlay_window(&app, &entry.overlay_label);
     }
@@ -593,6 +582,71 @@ fn register_runtime_thumbnail_locked(
         config.width,
         config.height,
     );
+}
+
+fn ensure_missing_runtime_overlays_locked(inner: &Arc<DwmInner>, max_to_create: usize) {
+    if max_to_create == 0 {
+        return;
+    }
+    let Some(app) = dwm_app_handle() else {
+        return;
+    };
+    let mut state = inner.runtime.lock().expect("dwm runtime lock poisoned");
+    let mut pids: Vec<u32> = state.keys().copied().collect();
+    pids.sort_unstable();
+    let mut created = 0usize;
+    for pid in pids {
+        if created >= max_to_create {
+            break;
+        }
+        let Some(entry) = state.get_mut(&pid) else {
+            continue;
+        };
+        if entry.thumbnail_window_hwnd == 0 || entry.thumbnail == 0 || !entry.overlay_label.is_empty() {
+            continue;
+        }
+        let overlay_id = thumbnail_webview_overlay::new_overlay_id();
+        match thumbnail_webview_overlay::open_thumbnail_overlay_window(
+            &app,
+            &overlay_id,
+            pid,
+            entry.thumbnail_window_hwnd,
+        ) {
+            Ok(overlay_label) => {
+                entry.overlay_id = overlay_id;
+                entry.overlay_label = overlay_label;
+                thumbnail_webview_overlay::set_overlay_window_title(
+                    &app,
+                    &entry.overlay_label,
+                    &entry.window_title,
+                );
+                layout_snapshot_update(
+                    pid,
+                    entry.thumbnail_window_hwnd,
+                    entry.overlay_label.clone(),
+                    entry.config.x,
+                    entry.config.y,
+                    entry.config.width,
+                    entry.config.height,
+                );
+                thumbnail_webview_overlay::show_overlay_window(&app, &entry.overlay_label);
+                sync_overlay_bounds(entry.thumbnail_window_hwnd, entry.overlay_label.as_str());
+                thumbnail_webview_overlay::emit_overlay_state(
+                    &app,
+                    &entry.overlay_label,
+                    &entry.overlay_id,
+                    pid,
+                    entry.is_focused,
+                    &entry.config,
+                    &entry.window_title,
+                );
+                created += 1;
+            }
+            Err(e) => {
+                eprintln!("YAEP: ensure_missing_runtime_overlays: {e}");
+            }
+        }
+    }
 }
 
 fn interaction_register(

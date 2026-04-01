@@ -797,6 +797,19 @@ fn get_runtime_thumbnail_state(
 }
 
 #[tauri::command]
+fn app_ready(state: State<'_, AppState>, app_handle: AppHandle) -> Result<(), String> {
+    let thumbnail_service = state.thumbnail_service.clone();
+    let db = state.db.clone();
+    let window_service = state.window_service.clone();
+    let dwm = state.dwm.clone();
+    tauri::async_runtime::spawn(async move {
+        thumbnail_service.stop();
+        thumbnail_service.start(app_handle, db, window_service, dwm);
+    });
+    Ok(())
+}
+
+#[tauri::command]
 fn get_thumbnail_overlay_state(
     state: State<'_, AppState>,
     overlay_id: String,
@@ -832,14 +845,6 @@ pub fn run() {
             diag::trace("boot", "tauri setup callback start");
             let db = {
                 let state = app.state::<AppState>();
-                diag::trace("boot", "thumbnail_service.start begin");
-                state.thumbnail_service.start(
-                    app.handle().clone(),
-                    state.db.clone(),
-                    state.window_service.clone(),
-                    state.dwm.clone(),
-                );
-                diag::trace("boot", "thumbnail_service.start returned");
                 state.db.clone()
             };
             if let Err(error) = setup_tray(app) {
@@ -915,6 +920,7 @@ pub fn run() {
             eve_backup_all_profiles,
             eve_fetch_character_name,
             activate_window_by_pid,
+            app_ready,
             get_runtime_thumbnail_state,
             get_thumbnail_overlay_state
         ])

@@ -1,8 +1,10 @@
 <script lang="ts">
   import "../app.css";
+  import { onMount } from "svelte";
   import { ModeWatcher } from "mode-watcher";
   import { page } from "$app/state";
   import type { LayoutProps } from "./$types";
+  import { backend } from "$services/backend";
   import CpuIcon from "@lucide/svelte/icons/cpu";
   import Gamepad2Icon from "@lucide/svelte/icons/gamepad-2";
   import Grid3x3Icon from "@lucide/svelte/icons/grid-3x3";
@@ -17,6 +19,8 @@
   import { Toaster } from "$lib/components/ui/sonner";
 
   let { children }: LayoutProps = $props();
+  let appLoading = $state(true);
+  let appLoadError = $state("");
 
   const sections = [
     { href: "/", label: "Dashboard", Icon: LayoutDashboardIcon },
@@ -36,10 +40,41 @@
     if (href === "/") return pathname === "/";
     return pathname === href || pathname.startsWith(`${href}/`);
   }
+
+  onMount(() => {
+    if (isThumbnailOverlay) {
+      appLoading = false;
+      document.getElementById("boot-splash")?.remove();
+      return;
+    }
+
+    void (async () => {
+      try {
+        await backend.appReady();
+      } catch {
+        appLoadError = "Unable to start runtime thumbnails.";
+      } finally {
+        appLoading = false;
+        document.getElementById("boot-splash")?.remove();
+      }
+    })();
+  });
 </script>
 
 {#if isThumbnailOverlay}
   {@render children?.()}
+{:else if appLoading}
+  <div class="flex min-h-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
+    <div class="size-8 animate-spin rounded-full border-2 border-muted border-t-primary"></div>
+    <p class="text-sm text-muted-foreground">Loading YAEP...</p>
+  </div>
+{:else if appLoadError}
+  <div class="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-6 text-center">
+    <p class="text-sm text-destructive">{appLoadError}</p>
+    <p class="text-xs text-muted-foreground">
+      You can keep using the app, but thumbnail runtime features may be unavailable.
+    </p>
+  </div>
 {:else}
   <ModeWatcher />
   <Toaster />

@@ -1,7 +1,7 @@
 //! **ThumbnailOverlayWindow** — Tauri windows for Svelte `/thumbnail-overlay` (border, title).
 //!
 //! We create two Tauri windows per thumbnail on Windows:
-//! - an invisible **anchor** owned by the DWM thumbnail host HWND
+//! - an invisible **anchor** owned by the native DWM thumbnail host HWND
 //! - the visible **overlay** owned by the anchor
 //!
 //! `sync_overlay_bounds_win` updates both windows with `SetWindowPos` to keep geometry and stacking
@@ -17,6 +17,7 @@ use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, SetWindowPos, SWP_NOACTIVATE};
 
 use crate::models::ThumbnailConfig;
+
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

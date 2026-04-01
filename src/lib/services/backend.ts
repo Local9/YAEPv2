@@ -157,6 +157,9 @@ export const backend = {
   getRuntimeThumbnailState(): Promise<RuntimeThumbnailStateSnapshot> {
     return invoke("get_runtime_thumbnail_state");
   },
+  appReady(): Promise<void> {
+    return invoke("app_ready");
+  },
   eveProfilesList(): Promise<string[]> {
     return invoke("eve_profiles_list");
   },

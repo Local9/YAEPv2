@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::thread;
 
 use serde::Serialize;
 use sysinfo::{Pid, ProcessesToUpdate, System};
@@ -15,6 +16,8 @@ use crate::windows::{WindowService, WindowSnapshot};
 
 const MONITOR_INTERVAL_MS: u64 = 2000;
 const FOCUS_INTERVAL_MS: u64 = 100;
+const NEW_THUMBNAIL_REGISTRATION_BREATHING_MS: u64 = 140;
+const OVERLAY_CREATION_PER_CYCLE: usize = 1;
 const BASE_EVE_TITLE: &str = "EVE";
 const CHARACTER_TITLE_PREFIX: &str = "EVE - ";
 
@@ -270,12 +273,17 @@ fn refresh_runtime_thumbnails(
         })
         .collect();
 
-    for (pid, thumb) in &new_by_pid {
-        if !state.thumbnails_by_pid.contains_key(pid) {
+    let mut new_pids: Vec<u32> = new_by_pid.keys().copied().collect();
+    new_pids.sort_unstable();
+    for pid in new_pids {
+        let Some(thumb) = new_by_pid.get(&pid) else {
+            continue;
+        };
+        if !state.thumbnails_by_pid.contains_key(&pid) {
             let _ = app_handle.emit(
                 "thumbnailAdded",
                 ThumbnailEvent {
-                    pid: *pid,
+                    pid,
                     window_title: thumb.title.clone(),
                 },
             );
@@ -286,18 +294,21 @@ fn refresh_runtime_thumbnails(
                     thumb.hwnd, thumb.title
                 ),
             );
-            dwm.register_runtime_thumbnail(*pid, thumb.hwnd, &thumb.title);
+            dwm.register_runtime_thumbnail(pid, thumb.hwnd, &thumb.title);
+            thread::sleep(Duration::from_millis(
+                NEW_THUMBNAIL_REGISTRATION_BREATHING_MS,
+            ));
             continue;
         }
 
-        if let Some(previous) = state.thumbnails_by_pid.get(pid) {
+        if let Some(previous) = state.thumbnails_by_pid.get(&pid) {
             let title_changed = previous.title != thumb.title;
             let hwnd_changed = previous.hwnd != thumb.hwnd;
             if title_changed || hwnd_changed {
                 let _ = app_handle.emit(
                     "thumbnailUpdated",
                     ThumbnailEvent {
-                        pid: *pid,
+                        pid,
                         window_title: thumb.title.clone(),
                     },
                 );
@@ -309,7 +320,7 @@ fn refresh_runtime_thumbnails(
                     ),
                 );
                 // Keep DWM linkage synchronized if source window changed.
-                dwm.register_runtime_thumbnail(*pid, thumb.hwnd, &thumb.title);
+                dwm.register_runtime_thumbnail(pid, thumb.hwnd, &thumb.title);
             }
         }
     }
@@ -345,6 +356,8 @@ fn refresh_runtime_thumbnails(
     }
 
     state.thumbnails_by_pid = new_by_pid;
+    drop(state);
+    dwm.ensure_missing_runtime_overlays(OVERLAY_CREATION_PER_CYCLE);
 }
 
 fn refresh_focus_state(
