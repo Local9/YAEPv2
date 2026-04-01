@@ -7,6 +7,8 @@
 //! `sync_overlay_bounds_win` updates both windows with `SetWindowPos` to keep geometry and stacking
 //! stable: **DWM thumbnail (bottom) -> anchor (middle) -> overlay (top)**.
 
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
+
 #[cfg(target_os = "windows")]
 use std::ffi::c_void;
 
@@ -76,16 +78,19 @@ pub fn open_thumbnail_overlay_window(
     app: &AppHandle,
     overlay_id: &str,
     pid: u32,
+    #[cfg(target_os = "windows")]
     thumbnail_window_hwnd: isize,
+    #[cfg(not(target_os = "windows"))]
+    _thumbnail_window_hwnd: isize,
 ) -> Result<String, String> {
     let label = overlay_window_label(overlay_id);
-    let anchor_label = overlay_anchor_window_label(overlay_id);
     if app.get_webview_window(&label).is_some() {
         return Ok(label);
     }
     let url = overlay_entry_url(app, overlay_id, pid)?;
     #[cfg(target_os = "windows")]
     let (anchor_win, overlay_win) = {
+        let anchor_label = overlay_anchor_window_label(overlay_id);
         let mut anchor_builder = WebviewWindowBuilder::new(app, &anchor_label, url.clone())
             .decorations(false)
             .transparent(true)

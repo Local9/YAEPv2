@@ -504,6 +504,7 @@ fn cycle_client_group(
     cycle_client_group_internal(&state, group_id, &direction, false)
 }
 
+#[cfg(target_os = "windows")]
 pub(crate) fn open_mumble_link_internal(state: &AppState, link_id: i64) -> Result<(), String> {
     let links = state.db.get_mumble_links()?;
     let link = links
@@ -843,10 +844,6 @@ pub fn run() {
         .manage(state)
         .setup(|app| {
             diag::trace("boot", "tauri setup callback start");
-            let db = {
-                let state = app.state::<AppState>();
-                state.db.clone()
-            };
             if let Err(error) = setup_tray(app) {
                 eprintln!("tray setup failed: {error}");
             }
@@ -861,10 +858,13 @@ pub fn run() {
                 diag::trace("boot", "global_hotkeys scheduled");
             }
             #[cfg(target_os = "windows")]
-            if let Ok(hidden) = db.get_app_setting("StartHidden".to_string()) {
-                if hidden.is_some_and(|v| v.eq_ignore_ascii_case("true")) {
-                    if let Some(w) = app.get_webview_window("main") {
-                        let _ = w.hide();
+            {
+                let db = app.state::<AppState>().db.clone();
+                if let Ok(hidden) = db.get_app_setting("StartHidden".to_string()) {
+                    if hidden.is_some_and(|v| v.eq_ignore_ascii_case("true")) {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.hide();
+                        }
                     }
                 }
             }

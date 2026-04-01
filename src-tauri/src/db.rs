@@ -366,6 +366,7 @@ impl DbService {
     }
 
     /// Per-window override if present, otherwise profile default config.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     pub fn resolve_thumbnail_config(
         &self,
         profile_id: i64,
