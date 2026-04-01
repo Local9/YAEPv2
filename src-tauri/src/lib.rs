@@ -17,7 +17,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State, WindowEvent};
 
 use crate::db::DbService;
 use crate::dwm::DwmService;
@@ -787,6 +787,16 @@ pub fn run() {
             activate_window_by_pid,
             get_thumbnail_overlay_state
         ])
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            let WindowEvent::CloseRequested { api, .. } = event else {
+                return;
+            };
+            api.prevent_close();
+            let _ = window.hide();
+        })
         .run(tauri::generate_context!());
 
     if let Err(error) = result {
