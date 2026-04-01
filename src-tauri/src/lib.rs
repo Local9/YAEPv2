@@ -18,6 +18,10 @@ use std::sync::Arc;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, WindowEvent};
+#[cfg(target_os = "windows")]
+use windows::core::HSTRING;
+#[cfg(target_os = "windows")]
+use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
 
 use crate::db::DbService;
 use crate::dwm::DwmService;
@@ -658,6 +662,11 @@ fn eve_copy_character_files(
 }
 
 #[tauri::command]
+fn eve_backup_all_profiles(state: State<'_, AppState>, output_path: String) -> Result<(), String> {
+    state.eve_tools.backup_all_profiles(output_path)
+}
+
+#[tauri::command]
 fn eve_fetch_character_name(
     state: State<'_, AppState>,
     character_id: u64,
@@ -681,6 +690,8 @@ fn get_thumbnail_overlay_state(
 pub fn run() {
     diag::install_panic_hook();
     diag::trace("boot", "run() entered");
+    #[cfg(target_os = "windows")]
+    set_windows_app_user_model_id();
     if let Err(error) = instance_guard::ensure_single_instance() {
         eprintln!("single-instance check failed: {error}");
         return;
@@ -698,6 +709,7 @@ pub fn run() {
 
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .setup(|app| {
             diag::trace("boot", "tauri setup callback start");
@@ -783,6 +795,7 @@ pub fn run() {
             eve_profiles_list,
             eve_copy_profile,
             eve_copy_character_files,
+            eve_backup_all_profiles,
             eve_fetch_character_name,
             activate_window_by_pid,
             get_thumbnail_overlay_state
@@ -801,6 +814,15 @@ pub fn run() {
 
     if let Err(error) = result {
         eprintln!("failed to run tauri application: {error}");
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_app_user_model_id() {
+    // Ensure Windows notifications are attributed to YAEP instead of the shell host process.
+    let app_id = HSTRING::from("com.yaep.rust");
+    if let Err(error) = unsafe { SetCurrentProcessExplicitAppUserModelID(&app_id) } {
+        eprintln!("failed to set AppUserModelID: {error}");
     }
 }
 

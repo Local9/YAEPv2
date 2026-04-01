@@ -160,6 +160,9 @@ export const backend = {
   eveCopyCharacterFiles(sourceProfile: string, targetProfile: string): Promise<void> {
     return invoke("eve_copy_character_files", { sourceProfile, targetProfile });
   },
+  eveBackupAllProfiles(outputPath: string): Promise<void> {
+    return invoke("eve_backup_all_profiles", { outputPath });
+  },
   eveFetchCharacterName(characterId: number): Promise<string> {
     return invoke("eve_fetch_character_name", { characterId });
   }

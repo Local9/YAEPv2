@@ -15,6 +15,7 @@
   "dependencies": {
     "@inlang/paraglide-js": "^2.15.1",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-notification": "~2.3.3",
     "mode-watcher": "^1.1.0"
   },

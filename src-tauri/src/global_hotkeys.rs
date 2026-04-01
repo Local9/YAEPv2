@@ -59,6 +59,8 @@ struct CaptureState {
     target_id: Option<i64>,
     /// Non-modifier vk awaiting key-up to finalize capture.
     pending_capture_vk: Option<u32>,
+    /// One-shot guard to ignore a queued WM_HOTKEY after capture-cancel.
+    suppress_next_hotkey_dispatch: bool,
 }
 
 static CAPTURE: Mutex<CaptureState> = Mutex::new(CaptureState {
@@ -66,6 +68,7 @@ static CAPTURE: Mutex<CaptureState> = Mutex::new(CaptureState {
     capture_type: String::new(),
     target_id: None,
     pending_capture_vk: None,
+    suppress_next_hotkey_dispatch: false,
 });
 
 pub fn begin_hotkey_capture(capture_type: String, target_id: Option<i64>) {
@@ -147,6 +150,7 @@ pub fn end_hotkey_capture() {
         g.capture_type.clear();
         g.target_id = None;
         g.pending_capture_vk = None;
+        g.suppress_next_hotkey_dispatch = false;
     }
 }
 
@@ -453,6 +457,7 @@ fn try_dispatch_hotkey_capture(
                 g.pending_capture_vk = None;
                 g.capture_type.clear();
                 g.target_id = None;
+                g.suppress_next_hotkey_dispatch = false;
                 let app_for_emit = HOTKEY_APP_HANDLE.get().cloned();
                 drop(g);
                 if app_for_emit.is_none() {
@@ -483,6 +488,40 @@ fn try_dispatch_hotkey_capture(
             return Some(HotkeyCaptureDisposition::PassThrough);
         }
         if key_down {
+            if vk == VK_ESCAPE.0 as u32 {
+                let payload = HotkeyCapturedPayload {
+                    value: String::new(),
+                    capture_type: g.capture_type.clone(),
+                    target_id: g.target_id,
+                };
+                g.active = false;
+                g.pending_capture_vk = None;
+                g.capture_type.clear();
+                g.target_id = None;
+                // Prevent the same Escape key press from also dispatching WM_HOTKEY.
+                g.suppress_next_hotkey_dispatch = true;
+                let app_for_emit = HOTKEY_APP_HANDLE.get().cloned();
+                drop(g);
+                if let Some(app_ref) = app_for_emit {
+                    diag::trace(
+                        "hotkeys",
+                        &format!(
+                            "{diag_source} capture_escape_cancel type={} target_id={:?}",
+                            payload.capture_type, payload.target_id
+                        ),
+                    );
+                    let app_emit = app_ref.clone();
+                    let _ = app_ref.run_on_main_thread(move || {
+                        let _ = app_emit.emit("hotkeyCaptured", payload);
+                    });
+                } else {
+                    diag::trace(
+                        "hotkeys",
+                        &format!("{diag_source} capture_escape_cancel: HOTKEY_APP_HANDLE unset"),
+                    );
+                }
+                return Some(HotkeyCaptureDisposition::Swallow);
+            }
             if g.pending_capture_vk.is_none() {
                 g.pending_capture_vk = Some(vk);
                 diag::trace(
@@ -582,6 +621,20 @@ extern "system" fn hotkey_wnd_proc(
         }
     }
     if msg == WM_HOTKEY {
+        // Ignore global hotkey actions while capture is active, and skip one queued
+        // WM_HOTKEY after escape-cancel to avoid dispatching the stale hotkey.
+        let mut should_ignore = false;
+        if let Ok(mut g) = CAPTURE.lock() {
+            if g.active {
+                should_ignore = true;
+            } else if g.suppress_next_hotkey_dispatch {
+                g.suppress_next_hotkey_dispatch = false;
+                should_ignore = true;
+            }
+        }
+        if should_ignore {
+            return LRESULT(0);
+        }
         let id = wparam.0 as i32;
         if let Some(action) = take_action_for_id(id) {
             dispatch_hotkey_action(action);

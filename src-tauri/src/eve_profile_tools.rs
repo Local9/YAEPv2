@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use sysinfo::{ProcessesToUpdate, System};
+use zip::write::FileOptions;
+use zip::CompressionMethod;
+use zip::ZipWriter;
 
 #[derive(Default)]
 pub struct EveProfileToolsService;
@@ -90,6 +93,47 @@ impl EveProfileToolsService {
         Ok(())
     }
 
+    pub fn backup_all_profiles(&self, output_path: String) -> Result<(), String> {
+        self.ensure_eve_not_running()?;
+        let base = self.eve_local_base_dir()?;
+        if !base.exists() {
+            return Err("EVE local directory not found".to_string());
+        }
+
+        let mut profile_dirs: Vec<PathBuf> = Vec::new();
+        for server_dir in fs::read_dir(&base).map_err(|e| e.to_string())? {
+            let server_dir = server_dir.map_err(|e| e.to_string())?;
+            if !server_dir.path().is_dir() {
+                continue;
+            }
+            for entry in fs::read_dir(server_dir.path()).map_err(|e| e.to_string())? {
+                let entry = entry.map_err(|e| e.to_string())?;
+                if !entry.path().is_dir() {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.eq_ignore_ascii_case("Default") || name.starts_with("settings_") {
+                    profile_dirs.push(entry.path());
+                }
+            }
+        }
+
+        if profile_dirs.is_empty() {
+            return Err("No EVE profiles found to back up".to_string());
+        }
+
+        let file = fs::File::create(&output_path).map_err(|e| e.to_string())?;
+        let mut zip = ZipWriter::new(file);
+        let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+
+        for profile_dir in &profile_dirs {
+            self.add_directory_to_zip(profile_dir, &base, &mut zip, options)?;
+        }
+
+        zip.finish().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     fn find_profile_dir(&self, profile_name: &str) -> Result<PathBuf, String> {
         let normalized = profile_name.trim();
         let base = self.eve_local_base_dir()?;
@@ -139,6 +183,35 @@ impl EveProfileToolsService {
         });
         if running {
             return Err("Cannot run profile tools while exefile is running".to_string());
+        }
+        Ok(())
+    }
+
+    fn add_directory_to_zip(
+        &self,
+        source_dir: &Path,
+        base_dir: &Path,
+        zip: &mut ZipWriter<fs::File>,
+        options: FileOptions,
+    ) -> Result<(), String> {
+        for entry in fs::read_dir(source_dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(base_dir)
+                .map_err(|e| e.to_string())?
+                .to_string_lossy()
+                .replace('\\', "/");
+
+            if path.is_dir() {
+                zip.add_directory(format!("{relative}/"), options)
+                    .map_err(|e| e.to_string())?;
+                self.add_directory_to_zip(&path, base_dir, zip, options)?;
+            } else {
+                zip.start_file(relative, options).map_err(|e| e.to_string())?;
+                let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+                std::io::copy(&mut file, zip).map_err(|e| e.to_string())?;
+            }
         }
         Ok(())
     }

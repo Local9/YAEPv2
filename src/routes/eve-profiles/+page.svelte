@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { backend } from "$services/backend";
+  import { save } from "@tauri-apps/plugin-dialog";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
+  import * as Select from "$lib/components/ui/select";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import {
     Card,
@@ -15,6 +17,7 @@
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import CopyIcon from "@lucide/svelte/icons/copy";
+  import DownloadIcon from "@lucide/svelte/icons/download";
   import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
   import Gamepad2Icon from "@lucide/svelte/icons/gamepad-2";
   import ListIcon from "@lucide/svelte/icons/list";
@@ -25,6 +28,8 @@
   let copyTargetProfile = $state("");
   let status = $state("");
   let error = $state("");
+  let isBackingUp = $state(false);
+  let profileSelectItems = $derived(profileFolders.map((profile) => ({ value: profile, label: profile })));
 
   async function refresh() {
     profileFolders = await backend.eveProfilesList();
@@ -50,6 +55,27 @@
       error = "";
     } catch (e) {
       error = String(e);
+    }
+  }
+
+  async function backupAllProfiles() {
+    try {
+      isBackingUp = true;
+      const backupPath = await save({
+        title: "Save EVE Profiles Backup",
+        defaultPath: `eve-profiles-backup-${new Date().toISOString().slice(0, 10)}.zip`,
+        filters: [{ name: "ZIP archive", extensions: ["zip"] }],
+      });
+      if (!backupPath) {
+        return;
+      }
+      await backend.eveBackupAllProfiles(backupPath);
+      status = `Backup saved to ${backupPath}`;
+      error = "";
+    } catch (e) {
+      error = String(e);
+    } finally {
+      isBackingUp = false;
     }
   }
 
@@ -89,7 +115,16 @@
       <Field>
         <FieldLabel class="text-muted-foreground">Source profile</FieldLabel>
         <FieldContent>
-          <Input bind:value={sourceProfile} placeholder="Source profile name" />
+          <Select.Root type="single" bind:value={sourceProfile} items={profileSelectItems}>
+            <Select.Trigger class="w-full">
+              <span data-slot="select-value">{sourceProfile || "Select source profile"}</span>
+            </Select.Trigger>
+            <Select.Content class="max-h-72 overflow-y-auto">
+              {#each profileFolders as profile (profile)}
+                <Select.Item value={profile} label={profile}>{profile}</Select.Item>
+              {/each}
+            </Select.Content>
+          </Select.Root>
         </FieldContent>
       </Field>
       <Field>
@@ -108,18 +143,43 @@
       <Field>
         <FieldLabel class="text-muted-foreground">Source profile</FieldLabel>
         <FieldContent>
-          <Input bind:value={sourceProfile} placeholder="Source profile name" />
+          <Select.Root type="single" bind:value={sourceProfile} items={profileSelectItems}>
+            <Select.Trigger class="w-full">
+              <span data-slot="select-value">{sourceProfile || "Select source profile"}</span>
+            </Select.Trigger>
+            <Select.Content class="max-h-72 overflow-y-auto">
+              {#each profileFolders as profile (profile)}
+                <Select.Item value={profile} label={profile}>{profile}</Select.Item>
+              {/each}
+            </Select.Content>
+          </Select.Root>
         </FieldContent>
       </Field>
       <Field>
         <FieldLabel class="text-muted-foreground">Target profile</FieldLabel>
         <FieldContent>
-          <Input bind:value={copyTargetProfile} placeholder="Target profile name" />
+          <Select.Root type="single" bind:value={copyTargetProfile} items={profileSelectItems}>
+            <Select.Trigger class="w-full">
+              <span data-slot="select-value">{copyTargetProfile || "Select target profile"}</span>
+            </Select.Trigger>
+            <Select.Content class="max-h-72 overflow-y-auto">
+              {#each profileFolders as profile (profile)}
+                <Select.Item value={profile} label={profile}>{profile}</Select.Item>
+              {/each}
+            </Select.Content>
+          </Select.Root>
         </FieldContent>
       </Field>
       <Button onclick={copyCharacterFiles} variant="secondary" class="gap-2 sm:mb-0">
         <CopyIcon class="size-4 shrink-0" aria-hidden="true" />
         Copy Char/User Files
+      </Button>
+    </div>
+
+    <div class="mt-4">
+      <Button onclick={backupAllProfiles} variant="outline" class="gap-2" disabled={isBackingUp}>
+        <DownloadIcon class="size-4 shrink-0" aria-hidden="true" />
+        {isBackingUp ? "Creating backup..." : "Backup All Profiles"}
       </Button>
     </div>
 

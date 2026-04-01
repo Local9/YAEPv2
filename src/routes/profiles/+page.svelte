@@ -30,12 +30,15 @@
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import CheckIcon from "@lucide/svelte/icons/check";
-  import KeyboardIcon from "@lucide/svelte/icons/keyboard";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import UsersIcon from "@lucide/svelte/icons/users";
 
   const PROFILE_SWITCH_CAPTURE = "profileSwitch";
+  const PROFILE_HOTKEY_INPUT_CLASS = "min-w-[10rem] cursor-pointer select-none";
+  const PROFILE_HOTKEY_CAPTURE_RING_CLASS = "ring-ring ring-2 ring-offset-2 ring-offset-background";
+
+  type ProfileHotkeyCaptureKind = typeof PROFILE_SWITCH_CAPTURE;
 
   interface HotkeyCapturedPayload {
     value: string;
@@ -49,7 +52,9 @@
   let status = $state("");
   let error = $state("");
   let createProfileDialogOpen = $state(false);
-  let captureProfileHotkeyId = $state<number | null>(null);
+  let captureProfileHotkey = $state<{ profileId: number; kind: ProfileHotkeyCaptureKind } | null>(
+    null,
+  );
   let notificationPermissionRequested = $state(false);
 
   async function refreshProfiles() {
@@ -112,20 +117,37 @@
     }
   }
 
-  async function startProfileHotkeyCapture(profileId: number) {
-    captureProfileHotkeyId = profileId;
+  async function onProfileSwitchHotkeyPointerDown(profile: Profile) {
+    captureProfileHotkey = { profileId: profile.id, kind: PROFILE_SWITCH_CAPTURE };
     error = "";
     try {
-      await backend.hotkeysCaptureStart(PROFILE_SWITCH_CAPTURE, profileId);
+      await backend.hotkeysCaptureStart(PROFILE_SWITCH_CAPTURE, profile.id);
     } catch (e) {
       error = String(e);
-      captureProfileHotkeyId = null;
+      captureProfileHotkey = null;
     }
   }
 
   function stopProfileHotkeyCapture() {
-    captureProfileHotkeyId = null;
+    captureProfileHotkey = null;
     void backend.hotkeysCaptureStop();
+  }
+
+  function isCapturingProfileHotkey(profileId: number): boolean {
+    return (
+      captureProfileHotkey?.profileId === profileId &&
+      captureProfileHotkey?.kind === PROFILE_SWITCH_CAPTURE
+    );
+  }
+
+  function isEscapeHotkeyValue(rawHotkey: string): boolean {
+    const tokens = rawHotkey
+      .split("+")
+      .map((token) => token.trim().toLowerCase())
+      .filter((token) => token.length > 0);
+    if (tokens.length === 0) return false;
+    const keyToken = tokens[tokens.length - 1];
+    return keyToken === "escape" || keyToken === "esc";
   }
 
   async function notifyProfileChanged(profileId: number) {
@@ -139,8 +161,8 @@
       }
       if (permissionGranted) {
         sendNotification({
-          title: "Profile changed",
-          body: `Active profile: ${profileName}`,
+          title: "YAEP",
+          body: `Profile changed: ${profileName}`,
         });
       }
     } catch {
@@ -167,7 +189,13 @@
     void listen<HotkeyCapturedPayload>("hotkeyCaptured", (event) => {
       const payload = event.payload;
       if (payload.captureType !== PROFILE_SWITCH_CAPTURE || payload.targetId == null) return;
-      captureProfileHotkeyId = null;
+      captureProfileHotkey = null;
+      if (payload.value.trim() === "" || isEscapeHotkeyValue(payload.value)) {
+        const profile = profiles.find((p) => p.id === payload.targetId);
+        if (profile) profile.switchHotkey = "";
+        void saveHotkey(payload.targetId, "");
+        return;
+      }
       void saveHotkey(payload.targetId, payload.value);
     }).then((unlisten) => {
       unlistenHotkeyCaptured = unlisten;
@@ -282,20 +310,37 @@
               <TableCell>
                 <div class="flex min-w-48 items-center gap-2">
                   <Input
-                    class="min-w-32"
-                    value={profile.switchHotkey}
-                    onblur={(e) =>
-                      saveHotkey(profile.id, (e.currentTarget as HTMLInputElement).value)}
-                    placeholder="Ctrl+Alt+F1"
+                    class="{PROFILE_HOTKEY_INPUT_CLASS} {isCapturingProfileHotkey(profile.id)
+                      ? PROFILE_HOTKEY_CAPTURE_RING_CLASS
+                      : ''}"
+                    readonly
+                    autocomplete="off"
+                    spellcheck={false}
+                    inputmode="none"
+                    aria-readonly="true"
+                    bind:value={profile.switchHotkey}
+                    placeholder={isCapturingProfileHotkey(profile.id)
+                      ? "Press chord, release key…"
+                      : "Click here, then press keys"}
+                    onpointerdown={() => void onProfileSwitchHotkeyPointerDown(profile)}
+                    onkeydown={(e) => {
+                      if (e.key !== "Escape") return;
+                      e.preventDefault();
+                      if (isCapturingProfileHotkey(profile.id)) {
+                        stopProfileHotkeyCapture();
+                      }
+                      profile.switchHotkey = "";
+                      void saveHotkey(profile.id, "");
+                    }}
+                    onpaste={(e) => e.preventDefault()}
+                    onblur={(e) => {
+                      if (isCapturingProfileHotkey(profile.id)) {
+                        stopProfileHotkeyCapture();
+                        return;
+                      }
+                      void saveHotkey(profile.id, (e.currentTarget as HTMLInputElement).value);
+                    }}
                   />
-                  <Button
-                    type="button"
-                    variant={captureProfileHotkeyId === profile.id ? "default" : "outline"}
-                    onclick={() => startProfileHotkeyCapture(profile.id)}
-                  >
-                    <KeyboardIcon class="size-4 shrink-0" aria-hidden="true" />
-                    {captureProfileHotkeyId === profile.id ? "Press keys..." : "Capture"}
-                  </Button>
                 </div>
               </TableCell>
               <TableCell>{profile.isActive ? "Yes" : "No"}</TableCell>
