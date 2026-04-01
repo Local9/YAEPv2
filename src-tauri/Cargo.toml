@@ -25,6 +25,11 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 sysinfo = "0.33"
 opener = "0.7"
 ureq = { version = "2.12", default-features = false, features = ["json"] }
+tauri-plugin-notification = "2"
+tauri-plugin-dialog = "2"
+zip = "0.6"
+
+[target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Security",
@@ -37,6 +42,3 @@ windows = { version = "0.61", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_Threading"
 ] }
-tauri-plugin-notification = "2"
-tauri-plugin-dialog = "2"
-zip = "0.6"
