@@ -1,9 +1,9 @@
 #[cfg(target_os = "windows")]
 mod windows_guard {
     use std::sync::OnceLock;
+    use windows::core::PCWSTR;
     use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
     use windows::Win32::System::Threading::CreateMutexW;
-    use windows::core::PCWSTR;
 
     /// Raw mutex handle value; `HANDLE` is not `Send`/`Sync` for `OnceLock`.
     static INSTANCE_MUTEX: OnceLock<isize> = OnceLock::new();

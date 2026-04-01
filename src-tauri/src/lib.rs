@@ -1,35 +1,35 @@
 mod db;
 mod diag;
 mod dwm;
-mod thumbnail_webview_overlay;
-mod monitors;
-#[cfg(target_os = "windows")]
-mod global_hotkeys;
 mod error;
 mod eve_profile_tools;
+#[cfg(target_os = "windows")]
+mod global_hotkeys;
 mod hotkeys;
 mod instance_guard;
 mod models;
+mod monitors;
 mod thumbnail_service;
+mod thumbnail_webview_overlay;
 mod windows;
 
-use std::sync::Arc;
 use serde::Deserialize;
+use std::sync::Arc;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, WindowEvent};
 
 use crate::db::DbService;
 use crate::dwm::DwmService;
-use crate::thumbnail_webview_overlay::ThumbnailOverlayStatePayload;
 use crate::eve_profile_tools::EveProfileToolsService;
 use crate::hotkeys::HotkeyService;
 use crate::models::{
     ClientGroup, ClientGroupDetail, DrawerSettings, GridLayoutPayload, GridLayoutPreviewItem,
-    HealthSnapshot, MonitorInfoDto, MumbleLink, MumbleLinksOverlaySettings, MumbleServerGroup, Profile,
-    ThumbnailConfig, ThumbnailSetting,
+    HealthSnapshot, MonitorInfoDto, MumbleLink, MumbleLinksOverlaySettings, MumbleServerGroup,
+    Profile, ThumbnailConfig, ThumbnailSetting,
 };
 use crate::thumbnail_service::ThumbnailService;
+use crate::thumbnail_webview_overlay::ThumbnailOverlayStatePayload;
 use crate::windows::WindowService;
 
 pub struct AppState {
@@ -173,13 +173,18 @@ fn save_thumbnail_setting(
     window_title: String,
     config: ThumbnailConfig,
 ) -> Result<(), String> {
-    state.db.save_thumbnail_setting(profile_id, window_title, config)?;
+    state
+        .db
+        .save_thumbnail_setting(profile_id, window_title, config)?;
     state.dwm.sync_thumbnail_graph();
     Ok(())
 }
 
 #[tauri::command]
-fn get_client_groups(state: State<'_, AppState>, profile_id: i64) -> Result<Vec<ClientGroup>, String> {
+fn get_client_groups(
+    state: State<'_, AppState>,
+    profile_id: i64,
+) -> Result<Vec<ClientGroup>, String> {
     state.db.get_client_groups(profile_id)
 }
 
@@ -216,7 +221,9 @@ fn add_client_group_member(
     group_id: i64,
     window_title: String,
 ) -> Result<(), String> {
-    state.db.add_client_group_member(profile_id, group_id, window_title)
+    state
+        .db
+        .add_client_group_member(profile_id, group_id, window_title)
 }
 
 #[tauri::command]
@@ -226,7 +233,9 @@ fn remove_client_group_member(
     group_id: i64,
     window_title: String,
 ) -> Result<(), String> {
-    state.db.remove_client_group_member(profile_id, group_id, window_title)
+    state
+        .db
+        .remove_client_group_member(profile_id, group_id, window_title)
 }
 
 #[tauri::command]
@@ -250,23 +259,14 @@ fn reorder_client_group_members(
             settings
                 .iter()
                 .find(|s| s.window_title == *t)
-                .map(|s| {
-                    (
-                        s.config.x,
-                        s.config.y,
-                        s.config.width,
-                        s.config.height,
-                    )
-                })
+                .map(|s| (s.config.x, s.config.y, s.config.width, s.config.height))
         })
         .collect();
 
     state.thumbnail_service.stop();
-    state.db.reorder_client_group_members(
-        profile_id,
-        group_id,
-        window_titles_in_order.clone(),
-    )?;
+    state
+        .db
+        .reorder_client_group_members(profile_id, group_id, window_titles_in_order.clone())?;
 
     let ordered: Vec<String> = window_titles_in_order
         .into_iter()
@@ -370,11 +370,7 @@ pub(crate) fn cycle_client_group_internal(
 
     let current_index = current_title
         .as_ref()
-        .and_then(|title| {
-            members
-                .iter()
-                .position(|m| m.trim() == title.trim())
-        })
+        .and_then(|title| members.iter().position(|m| m.trim() == title.trim()))
         .unwrap_or(0) as isize;
     let next_index = (current_index + step).rem_euclid(members.len() as isize) as usize;
     let next_title = members[next_index].trim();
@@ -662,7 +658,10 @@ fn eve_copy_character_files(
 }
 
 #[tauri::command]
-fn eve_fetch_character_name(state: State<'_, AppState>, character_id: u64) -> Result<String, String> {
+fn eve_fetch_character_name(
+    state: State<'_, AppState>,
+    character_id: u64,
+) -> Result<String, String> {
     state.eve_tools.fetch_character_name(character_id)
 }
 
@@ -698,6 +697,7 @@ pub fn run() {
     diag::trace("boot", "AppState initialized");
 
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .manage(state)
         .setup(|app| {
             diag::trace("boot", "tauri setup callback start");
@@ -839,9 +839,7 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let profiles = state.db.get_profiles().unwrap_or_default();
 
     let mut menu_builder = MenuBuilder::new(app);
-    let show_item = MenuItemBuilder::new("Show")
-        .id("tray.show")
-        .build(app)?;
+    let show_item = MenuItemBuilder::new("Show").id("tray.show").build(app)?;
     menu_builder = menu_builder.item(&show_item);
 
     for profile in profiles {
@@ -856,15 +854,13 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         menu_builder = menu_builder.item(&item);
     }
 
-    let exit_item = MenuItemBuilder::new("Exit")
-        .id("tray.exit")
-        .build(app)?;
+    let exit_item = MenuItemBuilder::new("Exit").id("tray.exit").build(app)?;
     let menu = menu_builder.item(&exit_item).build()?;
 
     let app_handle = app.handle().clone();
-    let mut tray_builder = TrayIconBuilder::new().menu(&menu).tooltip(
-        app.package_info().name.clone(),
-    );
+    let mut tray_builder = TrayIconBuilder::new()
+        .menu(&menu)
+        .tooltip(app.package_info().name.clone());
     if let Some(icon) = app.default_window_icon() {
         tray_builder = tray_builder.icon(icon.clone());
     } else {
@@ -974,10 +970,7 @@ fn build_grid_layout_preview(
         let ax = anchor.config.x;
         let ay = anchor.config.y;
         settings.insert(0, anchor);
-        (
-            ax.saturating_sub(ox as i64),
-            ay.saturating_sub(oy as i64),
-        )
+        (ax.saturating_sub(ox as i64), ay.saturating_sub(oy as i64))
     } else {
         (payload.grid_start_x, payload.grid_start_y)
     };
@@ -1044,13 +1037,15 @@ mod tests {
 
     #[test]
     fn resolve_grid_cell_height_uses_explicit_height_when_valid() {
-        let height = resolve_grid_cell_height(600, Some(240), None).expect("expected explicit height");
+        let height =
+            resolve_grid_cell_height(600, Some(240), None).expect("expected explicit height");
         assert_eq!(height, 240);
     }
 
     #[test]
     fn resolve_grid_cell_height_rejects_non_positive_explicit_height() {
-        let error = resolve_grid_cell_height(600, Some(0), None).expect_err("expected validation error");
+        let error =
+            resolve_grid_cell_height(600, Some(0), None).expect_err("expected validation error");
         assert_eq!(error, "Grid cell height must be greater than zero");
     }
 

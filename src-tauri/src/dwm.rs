@@ -4,23 +4,22 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use tauri::AppHandle;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::Graphics::Dwm::{
     DwmRegisterThumbnail, DwmUnregisterThumbnail, DwmUpdateThumbnailProperties,
     DWM_THUMBNAIL_PROPERTIES, DWM_TNP_OPACITY, DWM_TNP_RECTDESTINATION,
     DWM_TNP_SOURCECLIENTAREAONLY, DWM_TNP_VISIBLE,
 };
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetCapture, GetKeyState, ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE,
     TRACKMOUSEEVENT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetCursorPos,
-    GetWindowRect, IsIconic, IsWindow, LoadCursorW, RegisterClassW, SetCursor, SetForegroundWindow,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetCursorPos, GetWindowRect,
+    IsIconic, IsWindow, LoadCursorW, RegisterClassW, SetCursor, SetForegroundWindow,
     SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, CW_USEDEFAULT, GWLP_USERDATA,
-    IDC_ARROW, SW_RESTORE, SW_SHOWNA, SWP_NOACTIVATE, SWP_NOZORDER,
-    WINDOW_EX_STYLE,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MBUTTONDOWN, WM_RBUTTONDOWN,
+    IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE, SW_SHOWNA, WINDOW_EX_STYLE,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN,
     WM_RBUTTONUP, WM_SETCURSOR, WNDCLASSW, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
     WS_EX_TRANSPARENT, WS_POPUP,
 };
@@ -53,10 +52,8 @@ struct DwmThumbnailPropertiesAbi {
 
 /// `DwmUpdateThumbnailProperties` mask: destination rect (required for layout) plus
 /// `DWM_TNP_OPACITY` (0x4), `DWM_TNP_VISIBLE` (0x8), `DWM_TNP_SOURCECLIENTAREAONLY` (0x10).
-const DWM_THUMBNAIL_UPDATE_FLAGS: u32 = DWM_TNP_RECTDESTINATION
-    | DWM_TNP_OPACITY
-    | DWM_TNP_VISIBLE
-    | DWM_TNP_SOURCECLIENTAREAONLY;
+const DWM_THUMBNAIL_UPDATE_FLAGS: u32 =
+    DWM_TNP_RECTDESTINATION | DWM_TNP_OPACITY | DWM_TNP_VISIBLE | DWM_TNP_SOURCECLIENTAREAONLY;
 
 const MIN_THUMB_W: i32 = 192;
 const MIN_THUMB_H: i32 = 108;
@@ -194,7 +191,11 @@ impl DwmService {
     }
 
     pub fn set_app_handle(&self, app: AppHandle) {
-        *self.inner.app_handle.lock().expect("dwm app_handle lock poisoned") = Some(app.clone());
+        *self
+            .inner
+            .app_handle
+            .lock()
+            .expect("dwm app_handle lock poisoned") = Some(app.clone());
         if let Ok(mut g) = DWM_APP_HANDLE.lock() {
             *g = Some(app);
         }
@@ -229,7 +230,10 @@ impl DwmService {
 
     pub fn register_runtime_thumbnail(&self, pid: u32, source_hwnd: isize, title: &str) {
         if source_hwnd == 0 {
-            diag::trace("dwm", &format!("register_runtime_thumbnail pid={pid} skipped: source_hwnd=0"));
+            diag::trace(
+                "dwm",
+                &format!("register_runtime_thumbnail pid={pid} skipped: source_hwnd=0"),
+            );
             return;
         }
         diag::trace(
@@ -271,31 +275,22 @@ impl DwmService {
         let inner = self.inner.clone();
         let overlay_id = overlay_id.to_string();
         let (tx, rx) = std::sync::mpsc::channel();
-        let app = self
-            .inner
-            .app_handle
-            .lock()
-            .ok()
-            .and_then(|g| g.clone())?;
+        let app = self.inner.app_handle.lock().ok().and_then(|g| g.clone())?;
         if app
             .run_on_main_thread(move || {
-                let out = inner
-                    .runtime
-                    .lock()
-                    .ok()
-                    .and_then(|s| {
-                        s.iter().find(|(_, e)| e.overlay_id == overlay_id).map(
-                            |(pid, e)| {
-                                thumbnail_webview_overlay::overlay_state_payload(
-                                    overlay_id.as_str(),
-                                    *pid,
-                                    e.is_focused,
-                                    &e.config,
-                                    &e.window_title,
-                                )
-                            },
-                        )
-                    });
+                let out = inner.runtime.lock().ok().and_then(|s| {
+                    s.iter()
+                        .find(|(_, e)| e.overlay_id == overlay_id)
+                        .map(|(pid, e)| {
+                            thumbnail_webview_overlay::overlay_state_payload(
+                                overlay_id.as_str(),
+                                *pid,
+                                e.is_focused,
+                                &e.config,
+                                &e.window_title,
+                            )
+                        })
+                });
                 let _ = tx.send(out);
             })
             .is_err()
@@ -361,7 +356,9 @@ fn layout_snapshot_update(
     h: i64,
 ) {
     let (cw, ch) = clamp_dims_i64(w, h);
-    let mut m = layout_snapshot().lock().expect("layout snapshot lock poisoned");
+    let mut m = layout_snapshot()
+        .lock()
+        .expect("layout snapshot lock poisoned");
     m.insert(
         pid,
         LayoutEntry {
@@ -376,7 +373,9 @@ fn layout_snapshot_update(
 }
 
 fn layout_snapshot_remove(pid: u32) {
-    let mut m = layout_snapshot().lock().expect("layout snapshot lock poisoned");
+    let mut m = layout_snapshot()
+        .lock()
+        .expect("layout snapshot lock poisoned");
     m.remove(&pid);
 }
 
@@ -408,7 +407,10 @@ fn register_runtime_thumbnail_locked(
         return;
     };
     let Ok(mut config) = db.resolve_thumbnail_config(profile_id, &title) else {
-        diag::trace("dwm", &format!("pid={pid} skip: resolve_thumbnail_config failed"));
+        diag::trace(
+            "dwm",
+            &format!("pid={pid} skip: resolve_thumbnail_config failed"),
+        );
         return;
     };
     let (cw, ch) = clamp_dims_i64(config.width, config.height);
@@ -508,7 +510,10 @@ fn register_runtime_thumbnail_locked(
         }
         diag::trace(
             "dwm",
-            &format!("pid={pid} DwmRegisterThumbnail dest=0x{:x} source=0x{:x}", entry.thumbnail_window_hwnd, entry.source_hwnd),
+            &format!(
+                "pid={pid} DwmRegisterThumbnail dest=0x{:x} source=0x{:x}",
+                entry.thumbnail_window_hwnd, entry.source_hwnd
+            ),
         );
         match unsafe { DwmRegisterThumbnail(dest, source) } {
             Ok(thumb) => {
@@ -539,7 +544,9 @@ fn register_runtime_thumbnail_locked(
     }
     diag::trace(
         "dwm",
-        &format!("pid={pid} before apply_thumbnail_container_geometry (DwmUpdateThumbnailProperties)"),
+        &format!(
+            "pid={pid} before apply_thumbnail_container_geometry (DwmUpdateThumbnailProperties)"
+        ),
     );
     apply_thumbnail_container_geometry(
         entry.thumbnail_window_hwnd,
@@ -548,7 +555,10 @@ fn register_runtime_thumbnail_locked(
         entry.thumbnail,
         thumbnail_window_is_hovered(entry.thumbnail_window_hwnd),
     );
-    diag::trace("dwm", &format!("pid={pid} after apply_thumbnail_container_geometry"));
+    diag::trace(
+        "dwm",
+        &format!("pid={pid} after apply_thumbnail_container_geometry"),
+    );
     unsafe {
         let _ = ShowWindow(hwnd_from_isize(entry.thumbnail_window_hwnd), SW_SHOWNA);
     }
@@ -557,7 +567,10 @@ fn register_runtime_thumbnail_locked(
     }
     // Keep ThumbnailOverlayWindow aligned above ThumbnailWindow (rect + Z); ShowWindow can reorder topmost.
     sync_overlay_bounds(entry.thumbnail_window_hwnd, entry.overlay_label.as_str());
-    diag::trace("dwm", &format!("pid={pid} after ShowWindow; register path complete"));
+    diag::trace(
+        "dwm",
+        &format!("pid={pid} after ShowWindow; register path complete"),
+    );
 
     if let Some(app) = dwm_app_handle() {
         thumbnail_webview_overlay::emit_overlay_state(
@@ -582,8 +595,15 @@ fn register_runtime_thumbnail_locked(
     );
 }
 
-fn interaction_register(thumbnail_window_hwnd: isize, pid: u32, window_title: String, thumbnail: isize) {
-    let mut m = interaction_map().lock().expect("interaction map lock poisoned");
+fn interaction_register(
+    thumbnail_window_hwnd: isize,
+    pid: u32,
+    window_title: String,
+    thumbnail: isize,
+) {
+    let mut m = interaction_map()
+        .lock()
+        .expect("interaction map lock poisoned");
     m.insert(
         thumbnail_window_hwnd,
         HostInteractionInfo {
@@ -595,7 +615,9 @@ fn interaction_register(thumbnail_window_hwnd: isize, pid: u32, window_title: St
 }
 
 fn interaction_unregister(thumbnail_window_hwnd: isize) {
-    let mut m = interaction_map().lock().expect("interaction map lock poisoned");
+    let mut m = interaction_map()
+        .lock()
+        .expect("interaction map lock poisoned");
     m.remove(&thumbnail_window_hwnd);
 }
 
@@ -636,8 +658,15 @@ fn set_focused_thumbnail_locked(inner: &Arc<DwmInner>, focused_pid: Option<u32>)
         let focus_label = if should_focus { "[FOCUSED] " } else { "" };
         let label = format!("{focus_label}YAEP Overlay PID {pid}");
         if let Some(app) = dwm_app_handle() {
-            thumbnail_webview_overlay::set_overlay_window_title(&app, &runtime.overlay_label, &label);
-            sync_overlay_bounds(runtime.thumbnail_window_hwnd, runtime.overlay_label.as_str());
+            thumbnail_webview_overlay::set_overlay_window_title(
+                &app,
+                &runtime.overlay_label,
+                &label,
+            );
+            sync_overlay_bounds(
+                runtime.thumbnail_window_hwnd,
+                runtime.overlay_label.as_str(),
+            );
             thumbnail_webview_overlay::emit_overlay_state(
                 &app,
                 &runtime.overlay_label,
@@ -928,7 +957,11 @@ fn handle_rbutton_down(hwnd: HWND) -> bool {
     if unsafe { GetCursorPos(&mut anchor).is_err() } {
         return false;
     }
-    let snap = layout_snapshot().lock().ok().map(|g| g.clone()).unwrap_or_default();
+    let snap = layout_snapshot()
+        .lock()
+        .ok()
+        .map(|g| g.clone())
+        .unwrap_or_default();
     let mut start_rects = HashMap::new();
     if group {
         for (pid, le) in &snap {
@@ -966,7 +999,11 @@ fn handle_drag_move(hwnd: HWND) -> bool {
     }
     let dx = cur.x - st.anchor.x;
     let dy = cur.y - st.anchor.y;
-    let snap = layout_snapshot().lock().ok().map(|g| g.clone()).unwrap_or_default();
+    let snap = layout_snapshot()
+        .lock()
+        .ok()
+        .map(|g| g.clone())
+        .unwrap_or_default();
     for (pid, (sx, sy, sw, sh)) in &st.start_rects {
         let Some(le) = snap.get(pid) else {
             continue;
@@ -992,10 +1029,10 @@ fn handle_drag_move(hwnd: HWND) -> bool {
             let db_opt = GLOBAL_DB.lock().ok().and_then(|g| g.clone());
             if let Some(db) = db_opt {
                 if let Some(profile_id) = db.active_profile_id() {
-                    let title = interaction_map()
-                        .lock()
-                        .ok()
-                        .and_then(|m| m.get(&le.thumbnail_window_hwnd).map(|i| i.window_title.clone()));
+                    let title = interaction_map().lock().ok().and_then(|m| {
+                        m.get(&le.thumbnail_window_hwnd)
+                            .map(|i| i.window_title.clone())
+                    });
                     if let Some(ref wt) = title {
                         if let Ok(cfg) = db.resolve_thumbnail_config(profile_id, wt) {
                             update_thumbnail_properties_with_opacity(
@@ -1028,10 +1065,7 @@ fn handle_rbutton_up(hwnd: HWND) -> bool {
     if cap.0 != hwnd.0 {
         return false;
     }
-    let ended = drag_state()
-        .lock()
-        .ok()
-        .and_then(|mut g| g.take());
+    let ended = drag_state().lock().ok().and_then(|mut g| g.take());
     unsafe {
         let _ = ReleaseCapture();
     }
@@ -1063,10 +1097,10 @@ fn persist_drag_results(st: &DragState) {
         let Some(le) = layout.get(pid) else {
             continue;
         };
-        let title = interaction_map()
-            .lock()
-            .ok()
-            .and_then(|m| m.get(&le.thumbnail_window_hwnd).map(|i| i.window_title.clone()));
+        let title = interaction_map().lock().ok().and_then(|m| {
+            m.get(&le.thumbnail_window_hwnd)
+                .map(|i| i.window_title.clone())
+        });
         let Some(title) = title else {
             continue;
         };

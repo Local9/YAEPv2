@@ -229,7 +229,10 @@ fn refresh_runtime_thumbnails(
             );
             diag::trace(
                 "thumbnail",
-                &format!("new pid={pid} hwnd=0x{:x} title={}", thumb.hwnd, thumb.title),
+                &format!(
+                    "new pid={pid} hwnd=0x{:x} title={}",
+                    thumb.hwnd, thumb.title
+                ),
             );
             dwm.register_runtime_thumbnail(*pid, thumb.hwnd, &thumb.title);
             continue;

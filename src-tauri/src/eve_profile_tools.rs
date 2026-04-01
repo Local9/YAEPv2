@@ -108,7 +108,8 @@ impl EveProfileToolsService {
                 if !entry.path().is_dir() {
                     continue;
                 }
-                if name.eq_ignore_ascii_case("Default") && normalized.eq_ignore_ascii_case("Default")
+                if name.eq_ignore_ascii_case("Default")
+                    && normalized.eq_ignore_ascii_case("Default")
                 {
                     return Ok(entry.path());
                 }

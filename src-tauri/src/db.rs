@@ -167,9 +167,11 @@ impl DbService {
     pub fn set_active_profile(&self, profile_id: i64) -> Result<(), String> {
         let conn = self.connection()?;
         let exists: Option<i64> = conn
-            .query_row("SELECT Id FROM Profile WHERE Id = ?1 LIMIT 1", [profile_id], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT Id FROM Profile WHERE Id = ?1 LIMIT 1",
+                [profile_id],
+                |r| r.get(0),
+            )
             .optional()
             .map_err(|e| e.to_string())?;
         if exists.is_none() {
@@ -177,8 +179,11 @@ impl DbService {
         }
         conn.execute("UPDATE Profile SET IsActive = 0", [])
             .map_err(|e| e.to_string())?;
-        conn.execute("UPDATE Profile SET IsActive = 1 WHERE Id = ?1", [profile_id])
-            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE Profile SET IsActive = 1 WHERE Id = ?1",
+            [profile_id],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -218,9 +223,11 @@ impl DbService {
 
     pub fn active_profile_id(&self) -> Option<i64> {
         let conn = self.connection().ok()?;
-        conn.query_row("SELECT Id FROM Profile WHERE IsActive = 1 LIMIT 1", [], |r| {
-            r.get(0)
-        })
+        conn.query_row(
+            "SELECT Id FROM Profile WHERE IsActive = 1 LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
         .optional()
         .ok()
         .flatten()
@@ -241,7 +248,11 @@ impl DbService {
         Ok(out)
     }
 
-    pub fn add_process_to_preview(&self, profile_id: i64, process_name: String) -> Result<(), String> {
+    pub fn add_process_to_preview(
+        &self,
+        profile_id: i64,
+        process_name: String,
+    ) -> Result<(), String> {
         let value = process_name.trim().to_lowercase();
         if value.is_empty() {
             return Err("Process name cannot be empty".to_string());
@@ -255,7 +266,11 @@ impl DbService {
         Ok(())
     }
 
-    pub fn remove_process_to_preview(&self, profile_id: i64, process_name: String) -> Result<(), String> {
+    pub fn remove_process_to_preview(
+        &self,
+        profile_id: i64,
+        process_name: String,
+    ) -> Result<(), String> {
         let normalized = process_name.trim().to_lowercase();
         let conn = self.connection()?;
         conn.execute(
@@ -531,7 +546,11 @@ impl DbService {
         Ok(())
     }
 
-    pub fn ensure_client_group_profile(&self, group_id: i64, profile_id: i64) -> Result<(), String> {
+    pub fn ensure_client_group_profile(
+        &self,
+        group_id: i64,
+        profile_id: i64,
+    ) -> Result<(), String> {
         let conn = self.connection()?;
         let pid: Option<i64> = conn
             .query_row(
@@ -543,12 +562,17 @@ impl DbService {
             .map_err(|e| e.to_string())?;
         match pid {
             None => Err("Client group not found".to_string()),
-            Some(p) if p != profile_id => Err("Client group does not belong to this profile".to_string()),
+            Some(p) if p != profile_id => {
+                Err("Client group does not belong to this profile".to_string())
+            }
             Some(_) => Ok(()),
         }
     }
 
-    pub fn get_client_group_members(&self, group_id: i64) -> Result<Vec<ClientGroupMember>, String> {
+    pub fn get_client_group_members(
+        &self,
+        group_id: i64,
+    ) -> Result<Vec<ClientGroupMember>, String> {
         let conn = self.connection()?;
         let mut stmt = conn
             .prepare(
@@ -580,7 +604,10 @@ impl DbService {
             .collect())
     }
 
-    pub fn get_client_groups_detailed(&self, profile_id: i64) -> Result<Vec<ClientGroupDetail>, String> {
+    pub fn get_client_groups_detailed(
+        &self,
+        profile_id: i64,
+    ) -> Result<Vec<ClientGroupDetail>, String> {
         let groups = self.get_client_groups(profile_id)?;
         let mut out = Vec::new();
         for g in groups {
@@ -598,7 +625,11 @@ impl DbService {
         Ok(out)
     }
 
-    pub fn create_client_group(&self, profile_id: i64, name: String) -> Result<ClientGroupDetail, String> {
+    pub fn create_client_group(
+        &self,
+        profile_id: i64,
+        name: String,
+    ) -> Result<ClientGroupDetail, String> {
         let trimmed = name.trim();
         if trimmed.is_empty() {
             return Err("Group name cannot be empty".to_string());
@@ -861,7 +892,11 @@ impl DbService {
         Ok(out)
     }
 
-    pub fn create_mumble_server_group(&self, name: String, display_order: i64) -> Result<(), String> {
+    pub fn create_mumble_server_group(
+        &self,
+        name: String,
+        display_order: i64,
+    ) -> Result<(), String> {
         if name.trim().is_empty() {
             return Err("Group name cannot be empty".to_string());
         }
@@ -964,7 +999,8 @@ impl DbService {
                 .unwrap_or(default_value)
         };
         let parse_i64 = |s: Option<String>, default_value: i64| -> i64 {
-            s.and_then(|v| v.parse::<i64>().ok()).unwrap_or(default_value)
+            s.and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(default_value)
         };
         let parse_opt_i64 = |s: Option<String>| -> Option<i64> {
             let value = s.unwrap_or_default();
@@ -994,7 +1030,10 @@ impl DbService {
     }
 
     pub fn save_drawer_settings(&self, settings: DrawerSettings) -> Result<(), String> {
-        self.set_app_setting("DrawerScreenIndex".to_string(), settings.screen_index.to_string())?;
+        self.set_app_setting(
+            "DrawerScreenIndex".to_string(),
+            settings.screen_index.to_string(),
+        )?;
         self.set_app_setting("DrawerHardwareId".to_string(), settings.hardware_id)?;
         self.set_app_setting("DrawerSide".to_string(), settings.side)?;
         self.set_app_setting("DrawerWidth".to_string(), settings.width.to_string())?;
@@ -1019,9 +1058,11 @@ impl DbService {
 
     pub fn get_app_setting(&self, key: String) -> Result<Option<String>, String> {
         let conn = self.connection()?;
-        conn.query_row("SELECT Value FROM AppSettings WHERE Key = ?1", [key], |r| r.get(0))
-            .optional()
-            .map_err(|e| e.to_string())
+        conn.query_row("SELECT Value FROM AppSettings WHERE Key = ?1", [key], |r| {
+            r.get(0)
+        })
+        .optional()
+        .map_err(|e| e.to_string())
     }
 
     pub fn set_app_setting(&self, key: String, value: String) -> Result<(), String> {

@@ -19,11 +19,7 @@ pub fn install_panic_hook() {
             .payload()
             .downcast_ref::<&str>()
             .copied()
-            .or_else(|| {
-                info.payload()
-                    .downcast_ref::<String>()
-                    .map(|s| s.as_str())
-            })
+            .or_else(|| info.payload().downcast_ref::<String>().map(|s| s.as_str()))
             .unwrap_or("(non-string panic payload)");
         let _ = writeln!(
             std::io::stderr(),
@@ -35,13 +31,11 @@ pub fn install_panic_hook() {
 
 pub fn enabled() -> bool {
     static CACHE: OnceLock<bool> = OnceLock::new();
-    *CACHE.get_or_init(|| {
-        match std::env::var("YAEP_DIAG").ok().as_deref() {
-            None | Some("") | Some("0") | Some("false") | Some("FALSE") | Some("no") | Some("NO") => {
-                false
-            }
-            _ => true,
+    *CACHE.get_or_init(|| match std::env::var("YAEP_DIAG").ok().as_deref() {
+        None | Some("") | Some("0") | Some("false") | Some("FALSE") | Some("no") | Some("NO") => {
+            false
         }
+        _ => true,
     })
 }
 

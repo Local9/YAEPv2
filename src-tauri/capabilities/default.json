@@ -2,6 +2,12 @@
   "$schema": "https://schema.tauri.app/config/2/capability",
   "identifier": "default",
   "description": "Main shell and per-thumbnail overlay webviews",
-  "windows": ["main", "thumb*"],
-  "permissions": ["core:default"]
+  "windows": [
+    "main",
+    "thumb*"
+  ],
+  "permissions": [
+    "core:default",
+    "notification:default"
+  ]
 }

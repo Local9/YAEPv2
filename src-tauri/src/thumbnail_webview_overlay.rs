@@ -181,11 +181,7 @@ pub fn set_overlay_window_title(app: &AppHandle, label: &str, title: &str) {
 }
 
 /// Match overlay to the thumbnail window’s screen rect and stack **directly above** it (one `SetWindowPos`).
-pub fn sync_overlay_bounds_win(
-    app: &AppHandle,
-    thumbnail_window_hwnd: isize,
-    overlay_label: &str,
-) {
+pub fn sync_overlay_bounds_win(app: &AppHandle, thumbnail_window_hwnd: isize, overlay_label: &str) {
     if thumbnail_window_hwnd == 0 || overlay_label.is_empty() {
         return;
     }
@@ -199,13 +195,7 @@ pub fn sync_overlay_bounds_win(
         return;
     };
     let mut rect = RECT::default();
-    if unsafe {
-        GetWindowRect(
-            HWND(thumbnail_window_hwnd as *mut c_void),
-            &mut rect,
-        )
-        .is_err()
-    } {
+    if unsafe { GetWindowRect(HWND(thumbnail_window_hwnd as *mut c_void), &mut rect).is_err() } {
         return;
     }
     let w = (rect.right - rect.left).max(1);
@@ -245,8 +235,7 @@ pub fn sync_overlay_bounds_win(
             rect.left, rect.top,
         )));
         let _ = overlay_win.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-            w as u32,
-            h as u32,
+            w as u32, h as u32,
         )));
     }
     #[cfg(target_os = "windows")]

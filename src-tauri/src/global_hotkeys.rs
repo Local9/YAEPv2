@@ -9,27 +9,27 @@ use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use windows::Win32::Foundation::{HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::System::LibraryLoader::{
     GetModuleHandleExW, GetModuleHandleW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
 };
-use windows::Win32::UI::Input::{
-    GetRawInputData, RegisterRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER,
-    RID_INPUT, RIM_TYPEKEYBOARD, RIDEV_INPUTSINK, RIDEV_REMOVE,
-};
+use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, RegisterHotKey, UnregisterHotKey, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL,
-    MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, VK_0, VK_A, VK_BACK, VK_DELETE, VK_DOWN, VK_END,
-    VK_ESCAPE, VK_F1, VK_HOME, VK_INSERT, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_LEFT,
-    VK_NEXT, VK_NUMPAD0, VK_PRIOR, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_RETURN, VK_RIGHT,
-    VK_SHIFT, VK_CONTROL, VK_MENU, VK_SPACE, VK_TAB, VK_UP,
+    MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, VK_0, VK_A, VK_BACK, VK_CONTROL, VK_DELETE, VK_DOWN, VK_END,
+    VK_ESCAPE, VK_F1, VK_HOME, VK_INSERT, VK_LCONTROL, VK_LEFT, VK_LMENU, VK_LSHIFT, VK_LWIN,
+    VK_MENU, VK_NEXT, VK_NUMPAD0, VK_PRIOR, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RMENU, VK_RSHIFT,
+    VK_RWIN, VK_SHIFT, VK_SPACE, VK_TAB, VK_UP,
+};
+use windows::Win32::UI::Input::{
+    GetRawInputData, RegisterRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER,
+    RIDEV_INPUTSINK, RIDEV_REMOVE, RID_INPUT, RIM_TYPEKEYBOARD,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, KBDLLHOOKSTRUCT,
-    LLKHF_INJECTED, LLKHF_UP, PeekMessageW, PM_REMOVE,
-    PostThreadMessageW, RegisterClassW, SetWindowsHookExW, TranslateMessage, HHOOK, HWND_MESSAGE, MSG,
-    RI_KEY_BREAK, WH_KEYBOARD_LL, WM_INPUT, WM_KEYDOWN, WM_KEYUP, WM_NULL, WM_SYSKEYDOWN,
-    WM_SYSKEYUP, WINDOW_EX_STYLE, WINDOW_STYLE, WM_HOTKEY, WNDCLASSW,
+    CallNextHookEx, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, PeekMessageW,
+    PostThreadMessageW, RegisterClassW, SetWindowsHookExW, TranslateMessage, HHOOK, HWND_MESSAGE,
+    KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLKHF_UP, MSG, PM_REMOVE, RI_KEY_BREAK, WH_KEYBOARD_LL,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_HOTKEY, WM_INPUT, WM_KEYDOWN, WM_KEYUP, WM_NULL,
+    WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW,
 };
 
 use windows::core::PCWSTR;
@@ -237,7 +237,10 @@ fn run_message_loop(db: Arc<DbService>, refresh_rx: mpsc::Receiver<()>) {
     } {
         Ok(h) => h,
         Err(e) => {
-            diag::trace("hotkeys", &format!("CreateWindowExW(HWND_MESSAGE) failed: {e:?}"));
+            diag::trace(
+                "hotkeys",
+                &format!("CreateWindowExW(HWND_MESSAGE) failed: {e:?}"),
+            );
             return;
         }
     };
@@ -300,7 +303,10 @@ fn run_message_loop(db: Arc<DbService>, refresh_rx: mpsc::Receiver<()>) {
                     LL_KEYBOARD_HOOK_HANDLE.store(h.0 as usize, Ordering::SeqCst);
                     diag::trace(
                         "hotkeys",
-                        &format!("WH_KEYBOARD_LL hook installed (hMod=NULL) hhk=0x{:x}", h.0 as usize),
+                        &format!(
+                            "WH_KEYBOARD_LL hook installed (hMod=NULL) hhk=0x{:x}",
+                            h.0 as usize
+                        ),
                     );
                     installed = true;
                 }
@@ -558,7 +564,9 @@ fn try_handle_wm_input_capture(
     )?;
     Some(match disp {
         HotkeyCaptureDisposition::Swallow => LRESULT(0),
-        HotkeyCaptureDisposition::PassThrough => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+        HotkeyCaptureDisposition::PassThrough => unsafe {
+            DefWindowProcW(hwnd, msg, wparam, lparam)
+        },
     })
 }
 
@@ -591,9 +599,7 @@ fn id_table() -> &'static Mutex<Vec<(i32, HotkeyAction)>> {
 
 fn take_action_for_id(id: i32) -> Option<HotkeyAction> {
     let t = id_table().lock().ok()?;
-    t.iter()
-        .find(|(i, _)| *i == id)
-        .map(|(_, a)| a.clone())
+    t.iter().find(|(i, _)| *i == id).map(|(_, a)| a.clone())
 }
 
 fn dispatch_hotkey_action(action: HotkeyAction) {
@@ -618,21 +624,18 @@ fn dispatch_hotkey_action(action: HotkeyAction) {
                     state.window_service.clone(),
                     state.dwm.clone(),
                 );
-                let _ = app_on_main.emit(
-                    "profileChanged",
-                    ProfileChangedPayload { profile_id },
-                );
+                let _ = app_on_main.emit("profileChanged", ProfileChangedPayload { profile_id });
                 request_refresh();
             }
             HotkeyAction::CycleGroup { group_id, forward } => {
                 let direction = if forward { "forward" } else { "backward" };
-                if let Err(e) = crate::cycle_client_group_internal(
-                    &*state,
-                    group_id,
-                    direction,
-                    true,
-                ) {
-                    diag::trace("hotkeys", &format!("cycle_client_group WM_HOTKEY failed: {e}"));
+                if let Err(e) =
+                    crate::cycle_client_group_internal(&*state, group_id, direction, true)
+                {
+                    diag::trace(
+                        "hotkeys",
+                        &format!("cycle_client_group WM_HOTKEY failed: {e}"),
+                    );
                 }
             }
             HotkeyAction::OpenMumbleLink(link_id) => {
@@ -658,34 +661,35 @@ fn refresh_registrations(hwnd: HWND, db: &DbService, registered: &mut Vec<i32>) 
     table.clear();
 
     let mut next_id = 1i32;
-    let mut push = |table: &mut Vec<(i32, HotkeyAction)>, id: &mut i32, hk: &str, action: HotkeyAction| {
-        if hk.trim().is_empty() {
-            return;
-        }
-        let Some((mods, vk)) = parse_hotkey(hk) else {
-            diag::trace(
-                "hotkeys",
-                &format!("RegisterHotKey skipped (parse/validate failed): {hk:?}"),
-            );
-            return;
-        };
-        unsafe {
-            if let Err(e) = RegisterHotKey(Some(hwnd), *id, mods, vk) {
+    let mut push =
+        |table: &mut Vec<(i32, HotkeyAction)>, id: &mut i32, hk: &str, action: HotkeyAction| {
+            if hk.trim().is_empty() {
+                return;
+            }
+            let Some((mods, vk)) = parse_hotkey(hk) else {
                 diag::trace(
                     "hotkeys",
-                    &format!(
+                    &format!("RegisterHotKey skipped (parse/validate failed): {hk:?}"),
+                );
+                return;
+            };
+            unsafe {
+                if let Err(e) = RegisterHotKey(Some(hwnd), *id, mods, vk) {
+                    diag::trace(
+                        "hotkeys",
+                        &format!(
                         "RegisterHotKey failed id={} hk={hk:?} mods=0x{:x} vk=0x{vk:x} err={e:?}",
                         *id,
                         mods.0
                     ),
-                );
-                return;
+                    );
+                    return;
+                }
             }
-        }
-        table.push((*id, action));
-        registered.push(*id);
-        *id += 1;
-    };
+            table.push((*id, action));
+            registered.push(*id);
+            *id += 1;
+        };
 
     if let Ok(profiles) = db.get_profiles() {
         for p in profiles {
@@ -950,17 +954,11 @@ fn build_normalized_hotkey(vk: u32) -> Option<String> {
         .ok()
 }
 
-extern "system" fn low_level_keyboard_proc(
-    n_code: i32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
+extern "system" fn low_level_keyboard_proc(n_code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     LL_HOOK_ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
     if n_code >= 0 {
         LL_HOOK_NONNEG_CALLS.fetch_add(1, Ordering::Relaxed);
-    } else if diag::enabled()
-        && !LL_HOOK_FIRST_NCODE_LOGGED.swap(true, Ordering::SeqCst)
-    {
+    } else if diag::enabled() && !LL_HOOK_FIRST_NCODE_LOGGED.swap(true, Ordering::SeqCst) {
         diag::trace(
             "hotkeys",
             &format!(
@@ -990,16 +988,11 @@ extern "system" fn low_level_keyboard_proc(
     let key_up = info.flags.contains(LLKHF_UP)
         || wparam.0 == WM_KEYUP as usize
         || wparam.0 == WM_SYSKEYUP as usize;
-    let key_down =
-        wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
+    let key_down = wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
 
-    if let Some(disp) = try_dispatch_hotkey_capture(
-        vk,
-        key_up,
-        key_down,
-        Some(info.scanCode),
-        "capture_ll",
-    ) {
+    if let Some(disp) =
+        try_dispatch_hotkey_capture(vk, key_up, key_down, Some(info.scanCode), "capture_ll")
+    {
         return match disp {
             HotkeyCaptureDisposition::Swallow => LRESULT(1),
             HotkeyCaptureDisposition::PassThrough => pass(),

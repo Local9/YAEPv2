@@ -1,6 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import {
+    isPermissionGranted,
+    requestPermission,
+    sendNotification,
+  } from "@tauri-apps/plugin-notification";
   import { backend } from "$services/backend";
   import type { Profile } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
@@ -45,6 +50,7 @@
   let error = $state("");
   let createProfileDialogOpen = $state(false);
   let captureProfileHotkeyId = $state<number | null>(null);
+  let notificationPermissionRequested = $state(false);
 
   async function refreshProfiles() {
     profiles = await backend.getProfiles();
@@ -78,6 +84,7 @@
       error = "";
       status = "Active profile updated and matching thumbnails refreshed";
       await refreshProfiles();
+      await notifyProfileChanged(profileId);
     } catch (e) {
       error = String(e);
     }
@@ -121,15 +128,38 @@
     void backend.hotkeysCaptureStop();
   }
 
+  async function notifyProfileChanged(profileId: number) {
+    const profileName = profiles.find((p) => p.id === profileId)?.name ?? `Profile ${profileId}`;
+    try {
+      let permissionGranted = await isPermissionGranted();
+      if (!permissionGranted && !notificationPermissionRequested) {
+        notificationPermissionRequested = true;
+        const permission = await requestPermission();
+        permissionGranted = permission === "granted";
+      }
+      if (permissionGranted) {
+        sendNotification({
+          title: "Profile changed",
+          body: `Active profile: ${profileName}`,
+        });
+      }
+    } catch {
+      // Notifications are best-effort and should not interrupt profile changes.
+    }
+  }
+
   onMount(() => {
     void refreshProfiles();
     let unlistenProfileChanged: UnlistenFn | undefined;
     let unlistenHotkeyCaptured: UnlistenFn | undefined;
 
-    void listen<{ profileId: number }>("profileChanged", () => {
+    void listen<{ profileId: number }>("profileChanged", (event) => {
       status = "Profile changed by hotkey; matching thumbnails refreshed";
       error = "";
-      void refreshProfiles();
+      void (async () => {
+        await refreshProfiles();
+        await notifyProfileChanged(event.payload.profileId);
+      })();
     }).then((unlisten) => {
       unlistenProfileChanged = unlisten;
     });
