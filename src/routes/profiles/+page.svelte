@@ -187,7 +187,7 @@
     void listen<HotkeyCapturedPayload>("hotkeyCaptured", (event) => {
       const payload = event.payload;
       if (payload.captureType !== PROFILE_SWITCH_CAPTURE || payload.targetId == null) return;
-      captureProfileHotkey = null;
+      stopProfileHotkeyCapture();
       if (payload.value.trim() === "" || isEscapeHotkeyValue(payload.value)) {
         const profile = profiles.find((p) => p.id === payload.targetId);
         if (profile) profile.switchHotkey = "";

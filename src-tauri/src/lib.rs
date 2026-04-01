@@ -19,9 +19,9 @@ use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, WindowEvent};
 #[cfg(target_os = "windows")]
-use windows::core::HSTRING;
+use ::windows::core::HSTRING;
 #[cfg(target_os = "windows")]
-use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+use ::windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
 
 use crate::db::DbService;
 use crate::dwm::DwmService;
