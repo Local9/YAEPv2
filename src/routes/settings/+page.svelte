@@ -71,17 +71,31 @@
   </CardHeader>
   <CardContent>
     <div class="mt-4 grid max-w-3xl gap-3">
-      <Field orientation="horizontal" class="cursor-pointer items-center">
-        <FieldContent>
-          <Checkbox bind:checked={enableThumbnailDragging} />
+      <Field>
+        <FieldContent class="flex w-full flex-row items-center gap-2 flex-initial!">
+          <Checkbox
+            id="settings-enable-thumbnail-dragging"
+            bind:checked={enableThumbnailDragging}
+            class="cursor-pointer"
+          />
+          <FieldLabel
+            for="settings-enable-thumbnail-dragging"
+            class="text-muted-foreground mb-0 cursor-pointer leading-snug font-normal"
+          >
+            Enable Thumbnail Dragging
+          </FieldLabel>
         </FieldContent>
-        <FieldLabel class="text-foreground">Enable Thumbnail Dragging</FieldLabel>
       </Field>
-      <Field orientation="horizontal" class="cursor-pointer items-center">
-        <FieldContent>
-          <Checkbox bind:checked={startHidden} />
+      <Field>
+        <FieldContent class="flex w-full flex-row items-center gap-2 flex-initial!">
+          <Checkbox id="settings-start-hidden" bind:checked={startHidden} class="cursor-pointer" />
+          <FieldLabel
+            for="settings-start-hidden"
+            class="text-muted-foreground mb-0 cursor-pointer leading-snug font-normal"
+          >
+            Start Hidden
+          </FieldLabel>
         </FieldContent>
-        <FieldLabel class="text-foreground">Start Hidden</FieldLabel>
       </Field>
       <Field class="max-w-md">
         <FieldLabel class="text-muted-foreground">Theme</FieldLabel>

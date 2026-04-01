@@ -80,6 +80,19 @@ export type HealthSnapshot = {
   activeProfileId: number | null;
 };
 
+export type RuntimeThumbnailSnapshot = {
+  pid: number;
+  windowTitle: string;
+};
+
+export type RuntimeThumbnailStateSnapshot = {
+  thumbnails: RuntimeThumbnailSnapshot[];
+  focused: {
+    pid: number | null;
+    windowTitle: string | null;
+  };
+};
+
 export type MonitorInfoDto = {
   index: number;
   name: string;

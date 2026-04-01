@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { backend } from "$services/backend";
-  import type { HealthSnapshot } from "$models/domain";
+  import type { HealthSnapshot, RuntimeThumbnailStateSnapshot } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
   import {
     Card,
@@ -62,6 +62,9 @@
       );
 
       try {
+        const runtimeState: RuntimeThumbnailStateSnapshot = await backend.getRuntimeThumbnailState();
+        activeThumbnails = runtimeState.thumbnails;
+        focused = runtimeState.focused;
         health = await backend.health();
       } catch (err) {
         error = err instanceof Error ? err.message : String(err);

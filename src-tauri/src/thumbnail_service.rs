@@ -46,9 +46,23 @@ struct ThumbnailEvent {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct FocusEvent {
+pub struct FocusEvent {
     pid: Option<u32>,
     window_title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeThumbnailSnapshot {
+    pub pid: u32,
+    pub window_title: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeThumbnailStateSnapshot {
+    pub thumbnails: Vec<RuntimeThumbnailSnapshot>,
+    pub focused: FocusEvent,
 }
 
 impl ThumbnailService {
@@ -177,6 +191,44 @@ impl ThumbnailService {
         };
         drop(state);
         windows.activate_window_by_pid(pid)
+    }
+
+    pub fn snapshot_state(&self) -> RuntimeThumbnailStateSnapshot {
+        let Ok(state) = self.state.lock() else {
+            return RuntimeThumbnailStateSnapshot {
+                thumbnails: Vec::new(),
+                focused: FocusEvent {
+                    pid: None,
+                    window_title: None,
+                },
+            };
+        };
+
+        let mut thumbnails: Vec<RuntimeThumbnailSnapshot> = state
+            .thumbnails_by_pid
+            .iter()
+            .map(|(pid, thumb)| RuntimeThumbnailSnapshot {
+                pid: *pid,
+                window_title: thumb.title.clone(),
+            })
+            .collect();
+        thumbnails.sort_by_key(|t| t.pid);
+
+        let focused = match state.focused_pid {
+            Some(pid) => FocusEvent {
+                pid: Some(pid),
+                window_title: state.thumbnails_by_pid.get(&pid).map(|thumb| thumb.title.clone()),
+            },
+            None => FocusEvent {
+                pid: None,
+                window_title: None,
+            },
+        };
+
+        RuntimeThumbnailStateSnapshot {
+            thumbnails,
+            focused,
+        }
     }
 }
 

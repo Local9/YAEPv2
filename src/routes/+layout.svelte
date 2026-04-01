@@ -57,7 +57,7 @@
                     <LayoutDashboardIcon class="size-4" aria-hidden="true" />
                   </div>
                   <div class="grid flex-1 text-start text-sm leading-tight">
-                    <span class="truncate font-semibold">YAEP Rust</span>
+                    <span class="truncate font-semibold">YAEP - Yet Another EVE Preview</span>
                     <span class="truncate text-xs text-sidebar-foreground/70">Control panel</span>
                   </div>
                 </a>
@@ -95,7 +95,7 @@
     <Sidebar.Inset>
       <header class="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
         <Sidebar.Trigger />
-        <span class="truncate font-semibold md:hidden">YAEP Rust</span>
+        <span class="truncate font-semibold md:hidden">YAEP - Yet Another EVE Preview</span>
         <ThemeToggle />
       </header>
       <div class="flex flex-1 flex-col gap-4 p-4 md:p-6">

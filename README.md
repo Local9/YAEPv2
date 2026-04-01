@@ -1,4 +1,4 @@
-# YAEP Rust (Tauri + SvelteKit)
+# YAEP - Yet Another EVE Preview (Tauri + SvelteKit)
 
 Initial scaffold for rebuilding YAEP as a Windows-first Tauri desktop app with a SvelteKit frontend.
 

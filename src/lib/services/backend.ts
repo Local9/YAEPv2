@@ -9,6 +9,7 @@ import type {
   MumbleLink,
   MumbleServerGroup,
   Profile,
+  RuntimeThumbnailStateSnapshot,
   ThumbnailConfig,
   ThumbnailSetting
 } from "$models/domain";
@@ -150,6 +151,9 @@ export const backend = {
   },
   activateWindowByPid(pid: number): Promise<void> {
     return invoke("activate_window_by_pid", { pid });
+  },
+  getRuntimeThumbnailState(): Promise<RuntimeThumbnailStateSnapshot> {
+    return invoke("get_runtime_thumbnail_state");
   },
   eveProfilesList(): Promise<string[]> {
     return invoke("eve_profiles_list");

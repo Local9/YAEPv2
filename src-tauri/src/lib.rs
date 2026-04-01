@@ -32,7 +32,7 @@ use crate::models::{
     HealthSnapshot, MonitorInfoDto, MumbleLink, MumbleLinksOverlaySettings, MumbleServerGroup,
     Profile, ThumbnailConfig, ThumbnailSetting,
 };
-use crate::thumbnail_service::ThumbnailService;
+use crate::thumbnail_service::{RuntimeThumbnailStateSnapshot, ThumbnailService};
 use crate::thumbnail_webview_overlay::ThumbnailOverlayStatePayload;
 use crate::windows::WindowService;
 
@@ -680,6 +680,13 @@ fn activate_window_by_pid(state: State<'_, AppState>, pid: u32) -> Result<(), St
 }
 
 #[tauri::command]
+fn get_runtime_thumbnail_state(
+    state: State<'_, AppState>,
+) -> Result<RuntimeThumbnailStateSnapshot, String> {
+    Ok(state.thumbnail_service.snapshot_state())
+}
+
+#[tauri::command]
 fn get_thumbnail_overlay_state(
     state: State<'_, AppState>,
     overlay_id: String,
@@ -798,6 +805,7 @@ pub fn run() {
             eve_backup_all_profiles,
             eve_fetch_character_name,
             activate_window_by_pid,
+            get_runtime_thumbnail_state,
             get_thumbnail_overlay_state
         ])
         .on_window_event(|window, event| {

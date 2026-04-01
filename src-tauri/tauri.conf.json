@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "YAEP Rust",
+  "productName": "YAEP - Yet Another EVE Preview",
   "version": "0.1.0",
   "identifier": "com.yaep.rust",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "YAEP Rust",
+        "title": "YAEP - Yet Another EVE Preview",
         "width": 1280,
         "height": 840,
         "resizable": true
