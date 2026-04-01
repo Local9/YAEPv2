@@ -22,6 +22,10 @@
   let saveStatus = $state("");
   let error = $state("");
 
+  function userSafeErrorMessage(): string {
+    return "Unable to save settings right now. Please try again.";
+  }
+
   async function refresh() {
     try {
       const dragging = await backend.getAppSetting("EnableThumbnailDragging");
@@ -32,7 +36,7 @@
       theme = currentTheme ?? "Dark";
       error = "";
     } catch (e) {
-      error = String(e);
+      error = userSafeErrorMessage();
     }
   }
 
@@ -44,7 +48,7 @@
       saveStatus = "Settings saved";
       error = "";
     } catch (e) {
-      error = String(e);
+      error = userSafeErrorMessage();
     }
   }
 

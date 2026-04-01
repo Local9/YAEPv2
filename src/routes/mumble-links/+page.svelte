@@ -38,6 +38,19 @@
   let newLinkUrl = $state("");
   let newLinkHotkey = $state("");
 
+  function userSafeMumbleErrorMessage(): string {
+    return "Unable to save Mumble link changes right now. Please try again.";
+  }
+
+  function normalizeLinkUrl(url: string): string {
+    return url.trim();
+  }
+
+  function isAllowedLinkUrl(url: string): boolean {
+    const value = url.toLowerCase();
+    return value.startsWith("mumble://") || value.startsWith("https://");
+  }
+
   async function refresh() {
     links = await backend.getMumbleLinks();
     groups = await backend.getMumbleServerGroups();
@@ -52,16 +65,21 @@
       error = "";
       await refresh();
     } catch (e) {
-      error = String(e);
+      error = userSafeMumbleErrorMessage();
     }
   }
 
   async function addLink() {
     if (!newLinkName.trim() || !newLinkUrl.trim()) return;
+    const normalizedUrl = normalizeLinkUrl(newLinkUrl);
+    if (!isAllowedLinkUrl(normalizedUrl)) {
+      error = "Link URL must start with mumble:// or https://";
+      return;
+    }
     try {
       await backend.createMumbleLink(
         newLinkName.trim(),
-        newLinkUrl.trim(),
+        normalizedUrl,
         links.length,
         newLinkHotkey.trim(),
       );
@@ -72,18 +90,29 @@
       error = "";
       await refresh();
     } catch (e) {
-      error = String(e);
+      error = userSafeMumbleErrorMessage();
     }
   }
 
   async function saveLink(link: MumbleLink) {
+    const normalizedUrl = normalizeLinkUrl(link.url);
+    if (!isAllowedLinkUrl(normalizedUrl)) {
+      error = "Link URL must start with mumble:// or https://";
+      return;
+    }
     try {
-      await backend.updateMumbleLink(link.id, link.name, link.url, link.displayOrder, link.hotkey);
+      await backend.updateMumbleLink(
+        link.id,
+        link.name,
+        normalizedUrl,
+        link.displayOrder,
+        link.hotkey,
+      );
       status = `Saved ${link.name}`;
       error = "";
       await refresh();
     } catch (e) {
-      error = String(e);
+      error = userSafeMumbleErrorMessage();
     }
   }
 
@@ -94,7 +123,7 @@
       error = "";
       await refresh();
     } catch (e) {
-      error = String(e);
+      error = userSafeMumbleErrorMessage();
     }
   }
 
@@ -105,7 +134,7 @@
       error = "";
       await refresh();
     } catch (e) {
-      error = String(e);
+      error = userSafeMumbleErrorMessage();
     }
   }
 
@@ -116,7 +145,7 @@
       error = "";
       await refresh();
     } catch (e) {
-      error = String(e);
+      error = userSafeMumbleErrorMessage();
     }
   }
 

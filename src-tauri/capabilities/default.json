@@ -3,8 +3,7 @@
   "identifier": "default",
   "description": "Main shell and per-thumbnail overlay webviews",
   "windows": [
-    "main",
-    "thumb*"
+    "main"
   ],
   "permissions": [
     "core:default",

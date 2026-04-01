@@ -14,6 +14,8 @@ import type {
   ThumbnailSetting
 } from "$models/domain";
 
+// Security boundary note: renderer values are untrusted.
+// All privileged validation and authorization must be enforced in Rust commands.
 export const backend = {
   health(): Promise<HealthSnapshot> {
     return invoke("health");

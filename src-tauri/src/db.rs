@@ -1089,11 +1089,9 @@ fn validate_link_url(url: &str) -> Result<(), String> {
     if value.is_empty() {
         return Err("Link URL cannot be empty".to_string());
     }
-    let allowed = value.starts_with("mumble://")
-        || value.starts_with("https://")
-        || value.starts_with("http://");
+    let allowed = value.starts_with("mumble://") || value.starts_with("https://");
     if !allowed {
-        return Err("Link URL must start with mumble://, https://, or http://".to_string());
+        return Err("Link URL must start with mumble:// or https://".to_string());
     }
     Ok(())
 }

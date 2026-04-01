@@ -32,6 +32,10 @@
   let activeThumbnails = $state<ThumbnailEvent[]>([]);
   let focused = $state<FocusEvent>({ pid: null, windowTitle: null });
 
+  function userSafeRuntimeErrorMessage(): string {
+    return "Unable to communicate with the backend right now.";
+  }
+
   onMount(() => {
     const cleanup: Array<() => void> = [];
     void (async () => {
@@ -67,7 +71,7 @@
         focused = runtimeState.focused;
         health = await backend.health();
       } catch (err) {
-        error = err instanceof Error ? err.message : String(err);
+        error = userSafeRuntimeErrorMessage();
       }
     })();
 
@@ -80,7 +84,7 @@
     try {
       await backend.activateWindowByPid(pid);
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      error = userSafeRuntimeErrorMessage();
     }
   }
 </script>

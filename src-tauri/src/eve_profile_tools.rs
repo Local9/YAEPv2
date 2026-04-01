@@ -99,6 +99,7 @@ impl EveProfileToolsService {
         if !base.exists() {
             return Err("EVE local directory not found".to_string());
         }
+        let output = self.validate_backup_output_path(&output_path, &base)?;
 
         let mut profile_dirs: Vec<PathBuf> = Vec::new();
         for server_dir in fs::read_dir(&base).map_err(|e| e.to_string())? {
@@ -122,7 +123,7 @@ impl EveProfileToolsService {
             return Err("No EVE profiles found to back up".to_string());
         }
 
-        let file = fs::File::create(&output_path).map_err(|e| e.to_string())?;
+        let file = fs::File::create(&output).map_err(|e| e.to_string())?;
         let mut zip = ZipWriter::new(file);
         let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
 
@@ -197,6 +198,9 @@ impl EveProfileToolsService {
         for entry in fs::read_dir(source_dir).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
             let path = entry.path();
+            if is_symlink_path(&path)? {
+                continue;
+            }
             let relative = path
                 .strip_prefix(base_dir)
                 .map_err(|e| e.to_string())?
@@ -215,6 +219,40 @@ impl EveProfileToolsService {
         }
         Ok(())
     }
+
+    fn validate_backup_output_path(&self, output_path: &str, base_dir: &Path) -> Result<PathBuf, String> {
+        let trimmed = output_path.trim();
+        if trimmed.is_empty() {
+            return Err("Backup output path cannot be empty".to_string());
+        }
+
+        let output = PathBuf::from(trimmed);
+        if output.exists() {
+            return Err("Backup destination already exists".to_string());
+        }
+        let has_zip_extension = output
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"));
+        if !has_zip_extension {
+            return Err("Backup destination must end with .zip".to_string());
+        }
+
+        let parent = output
+            .parent()
+            .ok_or_else(|| "Backup destination must include a parent directory".to_string())?;
+        if !parent.exists() || !parent.is_dir() {
+            return Err("Backup destination directory does not exist".to_string());
+        }
+
+        let output_parent = fs::canonicalize(parent).map_err(|e| e.to_string())?;
+        let eve_base = fs::canonicalize(base_dir).map_err(|e| e.to_string())?;
+        if output_parent.starts_with(&eve_base) {
+            return Err("Backup destination cannot be inside the EVE profile directory".to_string());
+        }
+
+        Ok(output)
+    }
 }
 
 fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), String> {
@@ -222,6 +260,9 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), String> {
     for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let source_path = entry.path();
+        if is_symlink_path(&source_path)? {
+            continue;
+        }
         let destination_path = destination.join(entry.file_name());
         if source_path.is_dir() {
             copy_dir_recursive(&source_path, &destination_path)?;
@@ -230,4 +271,10 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn is_symlink_path(path: &Path) -> Result<bool, String> {
+    fs::symlink_metadata(path)
+        .map(|m| m.file_type().is_symlink())
+        .map_err(|e| e.to_string())
 }

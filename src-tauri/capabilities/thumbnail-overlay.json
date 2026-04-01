@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capability",
+  "identifier": "thumbnail-overlay",
+  "description": "Restricted capability scope for thumbnail overlay windows",
+  "windows": [
+    "thumb*"
+  ],
+  "permissions": [
+    "core:default"
+  ]
+}

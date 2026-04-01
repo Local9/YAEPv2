@@ -36,6 +36,8 @@ use crate::thumbnail_service::{RuntimeThumbnailStateSnapshot, ThumbnailService};
 use crate::thumbnail_webview_overlay::ThumbnailOverlayStatePayload;
 use crate::windows::WindowService;
 
+const GENERIC_OPERATION_ERROR: &str = "Operation failed. Check diagnostics for details.";
+
 pub struct AppState {
     db: Arc<DbService>,
     thumbnail_service: Arc<ThumbnailService>,
@@ -56,6 +58,98 @@ impl AppState {
             eve_tools: Arc::new(EveProfileToolsService),
         })
     }
+}
+
+fn sanitize_error(context: &str, err: String) -> String {
+    eprintln!("{context}: {err}");
+    GENERIC_OPERATION_ERROR.to_string()
+}
+
+fn is_boolean_setting_value(value: &str) -> bool {
+    value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
+}
+
+fn validate_app_setting_key(key: &str) -> Result<(), String> {
+    const ALLOWED_KEYS: &[&str] = &[
+        "EnableThumbnailDragging",
+        "StartHidden",
+        "Theme",
+        "DrawerScreenIndex",
+        "DrawerHardwareId",
+        "DrawerSide",
+        "DrawerWidth",
+        "DrawerHeight",
+        "DrawerIsVisible",
+        "DrawerIsEnabled",
+        "DrawerSelectedMumbleServerGroupId",
+    ];
+    if ALLOWED_KEYS.contains(&key) {
+        Ok(())
+    } else {
+        Err("Unknown setting key".to_string())
+    }
+}
+
+fn validate_app_setting_value(key: &str, value: &str) -> Result<(), String> {
+    let trimmed = value.trim();
+    match key {
+        "EnableThumbnailDragging" | "StartHidden" | "DrawerIsVisible" | "DrawerIsEnabled" => {
+            if !is_boolean_setting_value(trimmed) {
+                return Err("Setting value must be true or false".to_string());
+            }
+        }
+        "Theme" => {
+            if !trimmed.eq_ignore_ascii_case("dark") && !trimmed.eq_ignore_ascii_case("light") {
+                return Err("Theme must be Dark or Light".to_string());
+            }
+        }
+        "DrawerScreenIndex" => {
+            let parsed = trimmed
+                .parse::<i64>()
+                .map_err(|_| "Drawer screen index must be a number".to_string())?;
+            if !(0..=32).contains(&parsed) {
+                return Err("Drawer screen index is out of range".to_string());
+            }
+        }
+        "DrawerWidth" => {
+            let parsed = trimmed
+                .parse::<i64>()
+                .map_err(|_| "Drawer width must be a number".to_string())?;
+            if !(200..=3000).contains(&parsed) {
+                return Err("Drawer width is out of range".to_string());
+            }
+        }
+        "DrawerHeight" => {
+            let parsed = trimmed
+                .parse::<i64>()
+                .map_err(|_| "Drawer height must be a number".to_string())?;
+            if !(150..=3000).contains(&parsed) {
+                return Err("Drawer height is out of range".to_string());
+            }
+        }
+        "DrawerSide" => {
+            if !trimmed.eq_ignore_ascii_case("left") && !trimmed.eq_ignore_ascii_case("right") {
+                return Err("Drawer side must be Left or Right".to_string());
+            }
+        }
+        "DrawerSelectedMumbleServerGroupId" => {
+            if !trimmed.is_empty() {
+                let parsed = trimmed
+                    .parse::<i64>()
+                    .map_err(|_| "Drawer selected group id must be a number".to_string())?;
+                if parsed <= 0 {
+                    return Err("Drawer selected group id must be positive".to_string());
+                }
+            }
+        }
+        "DrawerHardwareId" => {
+            if trimmed.len() > 256 {
+                return Err("Drawer hardware id is too long".to_string());
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -416,7 +510,7 @@ pub(crate) fn open_mumble_link_internal(state: &AppState, link_id: i64) -> Resul
         .into_iter()
         .find(|l| l.id == link_id)
         .ok_or_else(|| "Mumble link not found".to_string())?;
-    opener::open(&link.url).map_err(|e| e.to_string())?;
+    opener::open(&link.url).map_err(|e| sanitize_error("open_mumble_link", e.to_string()))?;
     Ok(())
 }
 
@@ -547,12 +641,21 @@ fn save_drawer_settings(
 
 #[tauri::command]
 fn get_app_setting(state: State<'_, AppState>, key: String) -> Result<Option<String>, String> {
-    state.db.get_app_setting(key)
+    validate_app_setting_key(&key)?;
+    state
+        .db
+        .get_app_setting(key)
+        .map_err(|e| sanitize_error("get_app_setting", e))
 }
 
 #[tauri::command]
 fn set_app_setting(state: State<'_, AppState>, key: String, value: String) -> Result<(), String> {
-    state.db.set_app_setting(key, value)
+    validate_app_setting_key(&key)?;
+    validate_app_setting_value(&key, &value)?;
+    state
+        .db
+        .set_app_setting(key, value)
+        .map_err(|e| sanitize_error("set_app_setting", e))
 }
 
 #[derive(Debug, Deserialize)]
@@ -663,7 +766,10 @@ fn eve_copy_character_files(
 
 #[tauri::command]
 fn eve_backup_all_profiles(state: State<'_, AppState>, output_path: String) -> Result<(), String> {
-    state.eve_tools.backup_all_profiles(output_path)
+    state
+        .eve_tools
+        .backup_all_profiles(output_path)
+        .map_err(|e| sanitize_error("eve_backup_all_profiles", e))
 }
 
 #[tauri::command]
@@ -676,6 +782,10 @@ fn eve_fetch_character_name(
 
 #[tauri::command]
 fn activate_window_by_pid(state: State<'_, AppState>, pid: u32) -> Result<(), String> {
+    let snapshot = state.thumbnail_service.snapshot_state();
+    if !snapshot.thumbnails.iter().any(|thumb| thumb.pid == pid) {
+        return Err("Only active runtime thumbnails can be activated".to_string());
+    }
     state.window_service.activate_window_by_pid(pid)
 }
 
