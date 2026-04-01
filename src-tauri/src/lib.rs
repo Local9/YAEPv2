@@ -337,9 +337,24 @@ pub(crate) fn cycle_client_group_internal(
         return Ok(());
     }
 
-    let members = state.db.get_client_group_member_titles(group_id)?;
+    let mut members = state.db.get_client_group_member_titles(group_id)?;
     if members.is_empty() {
         return Ok(());
+    }
+
+    if only_when_foreground_is_monitored {
+        members = state
+            .thumbnail_service
+            .filter_group_members_to_active_runtime(&members);
+        if members.is_empty() {
+            if diag::enabled() {
+                diag::trace(
+                    "hotkeys",
+                    "cycle_client_group: skipped (no group members with active thumbnails)",
+                );
+            }
+            return Ok(());
+        }
     }
 
     let current_title = state
@@ -371,6 +386,17 @@ pub(crate) fn cycle_client_group_internal(
     {
         return Ok(());
     }
+
+    if only_when_foreground_is_monitored {
+        if diag::enabled() {
+            diag::trace(
+                "hotkeys",
+                "cycle_client_group: focus failed for active member (stale snapshot), skipping",
+            );
+        }
+        return Ok(());
+    }
+
     state.window_service.activate_window_by_title(next_title)?;
     Ok(())
 }

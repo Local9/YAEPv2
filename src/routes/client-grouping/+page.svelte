@@ -342,7 +342,8 @@
         <CardTitle class="text-lg font-semibold tracking-tight">Client Grouping</CardTitle>
         <CardDescription>
           Organize thumbnail clients into groups. Order in each group defines next / previous hotkey
-          cycling. Clients are matched by window title (same as thumbnails). Registered cycle hotkeys run only when the focused window is one of the clients currently
+          cycling among members that currently have live thumbnails (offline clients are skipped).
+          Clients are matched by window title (same as thumbnails). Registered cycle hotkeys run only when the focused window is one of the clients currently
           tracked by the thumbnail service (same PIDs as live thumbnails).
         </CardDescription>
       </div>

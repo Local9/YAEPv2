@@ -136,6 +136,27 @@ impl ThumbnailService {
         state.thumbnails_by_pid.contains_key(&fg.pid)
     }
 
+    /// Group member titles that currently match a tracked thumbnail, preserving group list order.
+    pub fn filter_group_members_to_active_runtime(
+        &self,
+        group_member_titles: &[String],
+    ) -> Vec<String> {
+        let Ok(state) = self.state.lock() else {
+            return Vec::new();
+        };
+        group_member_titles
+            .iter()
+            .filter(|m| {
+                let mt = m.trim();
+                state
+                    .thumbnails_by_pid
+                    .values()
+                    .any(|th| th.title.trim() == mt)
+            })
+            .cloned()
+            .collect()
+    }
+
     /// Focus the tracked client whose window title matches (trimmed). Uses known PID/HWND from the runtime map.
     pub fn focus_thumbnail_client_by_title(
         &self,
