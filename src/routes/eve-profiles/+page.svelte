@@ -5,7 +5,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Select from "$lib/components/ui/select";
-  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import { toast } from "svelte-sonner";
   import {
     Card,
     CardContent,
@@ -14,8 +14,6 @@
     CardTitle,
   } from "$lib/components/ui/card";
   import { Field, FieldContent, FieldLabel } from "$lib/components/ui/field";
-  import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
-  import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import DownloadIcon from "@lucide/svelte/icons/download";
   import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
@@ -80,6 +78,14 @@
   }
 
   onMount(refresh);
+
+  $effect(() => {
+    if (status) toast.success(status);
+  });
+
+  $effect(() => {
+    if (error) toast.error(error);
+  });
 </script>
 
 <Card class="shadow-sm">
@@ -96,21 +102,6 @@
     </div>
   </CardHeader>
   <CardContent>
-    {#if status}
-      <Alert class="border-primary/30 bg-primary/5">
-        <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
-        <AlertTitle>Status</AlertTitle>
-        <AlertDescription>{status}</AlertDescription>
-      </Alert>
-    {/if}
-    {#if error}
-      <Alert variant="destructive">
-        <AlertCircleIcon class="size-4" aria-hidden="true" />
-        <AlertTitle>Error</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    {/if}
-
     <div class="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
       <Field>
         <FieldLabel class="text-muted-foreground">Source profile</FieldLabel>

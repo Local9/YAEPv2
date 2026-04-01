@@ -14,6 +14,7 @@
   import UsersIcon from "@lucide/svelte/icons/users";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import ThemeToggle from "$lib/components/theme-toggle.svelte";
+  import { Toaster } from "$lib/components/ui/sonner";
 
   let { children }: LayoutProps = $props();
 
@@ -41,6 +42,7 @@
   {@render children?.()}
 {:else}
   <ModeWatcher />
+  <Toaster />
   <Sidebar.Provider>
     <Sidebar.Root collapsible="icon" variant="sidebar">
       <Sidebar.Header>

@@ -12,7 +12,7 @@
   import { Checkbox } from "$lib/components/ui/checkbox";
   import * as Select from "$lib/components/ui/select";
   import { Slider } from "$lib/components/ui/slider";
-  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import { toast } from "svelte-sonner";
   import {
     Card,
     CardContent,
@@ -29,7 +29,6 @@
     TableHeader,
     TableRow,
   } from "$lib/components/ui/table";
-  import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import Grid3x3Icon from "@lucide/svelte/icons/grid-3x3";
   import LayoutGridIcon from "@lucide/svelte/icons/layout-grid";
   import CrosshairIcon from "@lucide/svelte/icons/crosshair";
@@ -221,6 +220,14 @@
   }
 
   onMount(loadContext);
+
+  $effect(() => {
+    if (status) toast.success(status);
+  });
+
+  $effect(() => {
+    if (error) toast.error(error);
+  });
 </script>
 
 <Card class="shadow-sm">
@@ -404,21 +411,6 @@
       Apply Layout
     </Button>
   </div>
-
-  {#if status}
-    <Alert class="mt-4 border-primary/30 bg-primary/5">
-      <LayoutGridIcon class="size-4 text-primary" aria-hidden="true" />
-      <AlertTitle>Grid Layout</AlertTitle>
-      <AlertDescription>{status}</AlertDescription>
-    </Alert>
-  {/if}
-  {#if error}
-    <Alert variant="destructive" class="mt-4">
-      <AlertCircleIcon class="size-4" aria-hidden="true" />
-      <AlertTitle>Error</AlertTitle>
-      <AlertDescription>{error}</AlertDescription>
-    </Alert>
-  {/if}
 
   <div class="mt-6 overflow-x-auto">
     <Table>

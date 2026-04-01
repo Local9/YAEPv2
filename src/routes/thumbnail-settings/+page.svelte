@@ -5,7 +5,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { Input } from "$lib/components/ui/input";
-  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import { toast } from "svelte-sonner";
   import {
     Card,
     CardContent,
@@ -15,9 +15,7 @@
   } from "$lib/components/ui/card";
   import { Field, FieldContent, FieldLabel } from "$lib/components/ui/field";
   import { Separator } from "$lib/components/ui/separator";
-  import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
   import BookmarkIcon from "@lucide/svelte/icons/bookmark";
-  import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import ImageIcon from "@lucide/svelte/icons/image";
   import ListIcon from "@lucide/svelte/icons/list";
   import SaveIcon from "@lucide/svelte/icons/save";
@@ -72,6 +70,14 @@
   }
 
   onMount(refresh);
+
+  $effect(() => {
+    if (saveMessage) toast.success(saveMessage);
+  });
+
+  $effect(() => {
+    if (error) toast.error(error);
+  });
 </script>
 
 <Card class="shadow-sm">
@@ -85,21 +91,6 @@
     </div>
   </CardHeader>
   <CardContent>
-    {#if saveMessage}
-      <Alert class="border-primary/30 bg-primary/5">
-        <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
-        <AlertTitle>Status</AlertTitle>
-        <AlertDescription>{saveMessage}</AlertDescription>
-      </Alert>
-    {/if}
-    {#if error}
-      <Alert variant="destructive">
-        <AlertCircleIcon class="size-4 shrink-0" aria-hidden="true" />
-        <AlertTitle>Error</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    {/if}
-
     {#if defaultConfig}
       <div class="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
         <SlidersHorizontalIcon class="size-4 shrink-0" aria-hidden="true" />

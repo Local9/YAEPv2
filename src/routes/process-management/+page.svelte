@@ -4,7 +4,7 @@
   import type { Profile } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
-  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import { toast } from "svelte-sonner";
   import {
     Card,
     CardContent,
@@ -12,8 +12,6 @@
     CardHeader,
     CardTitle,
   } from "$lib/components/ui/card";
-  import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
-  import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import CpuIcon from "@lucide/svelte/icons/cpu";
   import ListIcon from "@lucide/svelte/icons/list";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -63,6 +61,14 @@
   }
 
   onMount(refresh);
+
+  $effect(() => {
+    if (status) toast.success(status);
+  });
+
+  $effect(() => {
+    if (error) toast.error(error);
+  });
 </script>
 
 <Card class="shadow-sm">
@@ -87,7 +93,7 @@
   <CardContent>
     <div class="mb-3 flex flex-wrap items-center gap-2">
       <Input
-        class="min-w-[10rem] flex-1 sm:max-w-xs"
+        class="min-w-40 flex-1 sm:max-w-xs"
         bind:value={newProcessName}
         placeholder="exefile"
       />
@@ -96,21 +102,6 @@
         Add process
       </Button>
     </div>
-
-    {#if status}
-      <Alert class="border-primary/30 bg-primary/5">
-        <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
-        <AlertTitle>Status</AlertTitle>
-        <AlertDescription>{status}</AlertDescription>
-      </Alert>
-    {/if}
-    {#if error}
-      <Alert variant="destructive">
-        <AlertCircleIcon class="size-4 shrink-0" aria-hidden="true" />
-        <AlertTitle>Error</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    {/if}
 
     <ul class="mt-4 space-y-2">
       {#each processes as process (process)}

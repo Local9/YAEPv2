@@ -5,7 +5,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { Input } from "$lib/components/ui/input";
-  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import { toast } from "svelte-sonner";
   import {
     Card,
     CardContent,
@@ -22,8 +22,6 @@
     TableHeader,
     TableRow,
   } from "$lib/components/ui/table";
-  import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
-  import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import LinkIcon from "@lucide/svelte/icons/link";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import RadioIcon from "@lucide/svelte/icons/radio";
@@ -123,6 +121,14 @@
   }
 
   onMount(refresh);
+
+  $effect(() => {
+    if (status) toast.success(status);
+  });
+
+  $effect(() => {
+    if (error) toast.error(error);
+  });
 </script>
 
 <Card class="shadow-sm">
@@ -136,27 +142,12 @@
     </div>
   </CardHeader>
   <CardContent>
-  {#if status}
-    <Alert class="border-primary/30 bg-primary/5">
-      <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
-      <AlertTitle>Status</AlertTitle>
-      <AlertDescription>{status}</AlertDescription>
-    </Alert>
-  {/if}
-  {#if error}
-    <Alert variant="destructive">
-      <AlertCircleIcon class="size-4" aria-hidden="true" />
-      <AlertTitle>Error</AlertTitle>
-      <AlertDescription>{error}</AlertDescription>
-    </Alert>
-  {/if}
-
   <div class="mt-6 flex items-center gap-2 text-sm font-medium text-muted-foreground">
     <ServerIcon class="size-4 shrink-0" aria-hidden="true" />
     <h3 class="text-base font-semibold text-foreground">Server Groups</h3>
   </div>
   <div class="mt-3 flex max-w-lg flex-wrap items-center gap-2">
-    <Input class="min-w-[12rem] flex-1" bind:value={newGroupName} placeholder="Group name" />
+    <Input class="min-w-48 flex-1" bind:value={newGroupName} placeholder="Group name" />
     <Button onclick={addGroup} class="gap-2">
       <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
       Add Group

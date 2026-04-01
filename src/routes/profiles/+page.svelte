@@ -11,7 +11,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Dialog from "$lib/components/ui/dialog";
-  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import { toast } from "svelte-sonner";
   import {
     Card,
     CardContent,
@@ -27,8 +27,6 @@
     TableHeader,
     TableRow,
   } from "$lib/components/ui/table";
-  import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
-  import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import CheckIcon from "@lucide/svelte/icons/check";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
@@ -207,6 +205,14 @@
       stopProfileHotkeyCapture();
     };
   });
+
+  $effect(() => {
+    if (status) toast.success(status);
+  });
+
+  $effect(() => {
+    if (error) toast.error(error);
+  });
 </script>
 
 <Card class="shadow-sm">
@@ -275,21 +281,6 @@
         </Dialog.Footer>
       </Dialog.Content>
     </Dialog.Root>
-
-    {#if status}
-      <Alert class="border-primary/30 bg-primary/5">
-        <CheckCircle2Icon class="size-4 text-primary" aria-hidden="true" />
-        <AlertTitle>Status</AlertTitle>
-        <AlertDescription>{status}</AlertDescription>
-      </Alert>
-    {/if}
-    {#if error}
-      <Alert variant="destructive">
-        <AlertCircleIcon class="size-4 shrink-0" aria-hidden="true" />
-        <AlertTitle>Error</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    {/if}
 
     <div class="mt-4 overflow-x-auto">
       <Table>
