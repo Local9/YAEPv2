@@ -23,6 +23,7 @@
   import LayersIcon from "@lucide/svelte/icons/layers";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import { Skeleton } from "$lib/components/ui/skeleton";
 
   const CLIENT_GROUP_FORWARD_CAPTURE = "clientGroupCycleForward";
   const CLIENT_GROUP_BACKWARD_CAPTURE = "clientGroupCycleBackward";
@@ -55,9 +56,13 @@
   let newGroupName = $state("");
   let createGroupDialogOpen = $state(false);
 
+  /** Member reorder uses pointer events (WebView2 does not reliably fire HTML5 `drop`). */
   let dragGroupId = $state<number | null>(null);
   let dragTitle = $state<string | null>(null);
   let dropBeforeIndex = $state<number | null>(null);
+  let memberListRefs = $state<Record<number, HTMLElement | undefined>>({});
+  let reorderListEl: HTMLElement | null = null;
+  let reorderGroup: ClientGroupDetail | null = null;
   /** Which group is capturing a cycle hotkey (forward or backward), if any. */
   let captureHotkey = $state<{ groupId: number; kind: GroupHotkeyCaptureKind } | null>(null);
 
@@ -217,71 +222,104 @@
     return next;
   }
 
-  async function onMemberDrop(group: ClientGroupDetail, e?: DragEvent) {
-    const titleFromTransfer = e?.dataTransfer?.getData("text/plain").trim() ?? "";
-    const effectiveTitle = titleFromTransfer || dragTitle || "";
-    if (activeProfileId == null || !effectiveTitle || dragGroupId !== group.id) {
-      clearDragState();
-      return;
-    }
-    const titles = orderedMemberTitles(group);
-    const fromIndex = titles.indexOf(effectiveTitle);
-    const beforeIdx = dropBeforeIndex;
-    clearDragState();
-    if (fromIndex < 0 || beforeIdx == null) return;
-    const next = reorderTitles(titles, fromIndex, beforeIdx);
-    if (next.join("\0") === titles.join("\0")) return;
-    try {
-      await backend.reorderClientGroupMembers(activeProfileId, group.id, next);
-      status = `Updated order for ${group.name}`;
-      error = "";
-      await refresh();
-    } catch (e) {
-      error = String(e);
-    }
-  }
-
-  function onRowDragEnter(e: DragEvent) {
-    e.preventDefault();
-  }
-
-  function onRowDragOver(e: DragEvent, group: ClientGroupDetail, rowIndex: number) {
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-    if (dragGroupId !== group.id) return;
-    const row = e.currentTarget as HTMLElement;
-    const rect = row.getBoundingClientRect();
-    const mid = rect.top + rect.height / 2;
-    dropBeforeIndex = e.clientY < mid ? rowIndex : rowIndex + 1;
-  }
-
-  function onListDragEnter(e: DragEvent) {
-    e.preventDefault();
-  }
-
-  function onListDragOver(e: DragEvent, group: ClientGroupDetail, memberCount: number) {
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-    if (dragGroupId !== group.id) return;
-    if (memberCount === 0) {
-      dropBeforeIndex = 0;
-      return;
-    }
-    const el = e.currentTarget as HTMLElement;
-    const rect = el.getBoundingClientRect();
-    if (e.clientY >= rect.bottom - 8) {
-      dropBeforeIndex = memberCount;
-    }
-  }
-
-  function clearDragState() {
+  function clearMemberReorderState() {
+    reorderListEl = null;
+    reorderGroup = null;
     dragGroupId = null;
     dragTitle = null;
     dropBeforeIndex = null;
   }
 
-  function onRowDragEnd() {
-    requestAnimationFrame(() => clearDragState());
+  function updateDropIndexFromPointer(clientY: number) {
+    if (reorderListEl == null || reorderGroup == null || dragTitle == null) return;
+    const titles = orderedMemberTitles(reorderGroup);
+    const fromIndex = titles.indexOf(dragTitle);
+    if (fromIndex < 0) return;
+    const memberCount = titles.length;
+    const rows = [...reorderListEl.querySelectorAll<HTMLElement>("[data-reorder-row]")];
+    const indexed = rows
+      .map((el) => ({
+        el,
+        i: Number.parseInt(el.dataset.reorderRow ?? "", 10),
+      }))
+      .filter((x) => !Number.isNaN(x.i) && x.i !== fromIndex)
+      .sort((a, b) => a.i - b.i);
+
+    if (indexed.length > 0) {
+      const firstTop = indexed[0].el.getBoundingClientRect().top;
+      if (clientY < firstTop) {
+        dropBeforeIndex = 0;
+        return;
+      }
+    }
+
+    for (const { el, i } of indexed) {
+      const rect = el.getBoundingClientRect();
+      if (rect.height < 2) continue;
+      const mid = rect.top + rect.height / 2;
+      if (clientY < mid) {
+        dropBeforeIndex = i;
+        return;
+      }
+    }
+    dropBeforeIndex = memberCount;
+  }
+
+  function onGripPointerDown(
+    e: PointerEvent,
+    group: ClientGroupDetail,
+    title: string,
+    rowIndex: number,
+  ) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const listEl = memberListRefs[group.id];
+    if (!listEl) return;
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+    reorderListEl = listEl;
+    reorderGroup = group;
+    dragGroupId = group.id;
+    dragTitle = title;
+    dropBeforeIndex = rowIndex;
+  }
+
+  function onGripPointerMove(e: PointerEvent) {
+    if (reorderListEl == null || reorderGroup == null) return;
+    updateDropIndexFromPointer(e.clientY);
+  }
+
+  async function onGripPointerUp(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    try {
+      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    const g = reorderGroup;
+    const title = dragTitle;
+    const beforeIdx = dropBeforeIndex;
+    clearMemberReorderState();
+    if (activeProfileId == null || g == null || !title || beforeIdx == null) return;
+    const titles = orderedMemberTitles(g);
+    const fromIndex = titles.indexOf(title);
+    if (fromIndex < 0) return;
+    const next = reorderTitles(titles, fromIndex, beforeIdx);
+    if (next.join("\0") === titles.join("\0")) return;
+    try {
+      await backend.reorderClientGroupMembers(activeProfileId, g.id, next);
+      status = `Updated order for ${g.name}`;
+      error = "";
+      await refresh();
+    } catch (err) {
+      error = String(err);
+    }
+  }
+
+  function onGripLostCapture() {
+    if (reorderListEl !== null || reorderGroup !== null) {
+      clearMemberReorderState();
+    }
   }
 
   onMount(() => {
@@ -398,8 +436,8 @@
       </p>
 
       <p class="text-muted-foreground mt-3 text-xs">
-        Add clients from current thumbnail window titles. Drag by the grip to reorder; the target row shows a top
-        or bottom border where the item will land. Cycle hotkeys follow this order.
+        Add clients from current thumbnail window titles. Press and drag the grip to reorder (pointer-based; the
+        a drop preview shows the client title and where it will land). Cycle hotkeys follow this order.
       </p>
 
       {#if groups.length === 0}
@@ -527,54 +565,43 @@
                       {:else}
                         {@const memberTitles = orderedMemberTitles(group)}
                         <div
+                          bind:this={memberListRefs[group.id]}
                           class="bg-muted/20 max-w-3xl rounded-lg border border-dashed border-border p-2"
                           role="list"
-                          ondragenter={onListDragEnter}
-                          ondragover={(e) => onListDragOver(e, group, group.members.length)}
-                          ondrop={(e) => {
-                            e.preventDefault();
-                            void onMemberDrop(group, e);
-                          }}
                         >
+                          {#snippet reorderDropSkeleton(spacingClass: string, windowTitle: string)}
+                            <div
+                              class="border-primary/45 bg-muted/15 flex items-center gap-2 rounded-md border border-dashed px-2 py-2 shadow-xs {spacingClass}"
+                            >
+                              <Skeleton class="size-6 shrink-0 rounded-sm" />
+                              <span
+                                class="text-foreground min-w-0 flex-1 truncate text-sm"
+                                title={windowTitle}>{windowTitle}</span>
+                              <Skeleton class="h-8 w-18 shrink-0 rounded-md" />
+                            </div>
+                          {/snippet}
                           {#each memberTitles as title, i (title)}
+                            {#if dragGroupId === group.id && dragTitle != null && dropBeforeIndex === i}
+                              {@render reorderDropSkeleton("mb-1", dragTitle)}
+                            {/if}
                             <div
                               role="listitem"
-                              class="hover:bg-muted/40 flex items-center gap-2 rounded-md border border-transparent px-2 py-2 transition-[border-color] {dragGroupId ===
+                              data-reorder-row={i}
+                              class="hover:bg-muted/40 flex items-center gap-2 rounded-md border border-transparent px-2 py-2 {dragGroupId ===
                                 group.id && dragTitle === title
-                                ? 'opacity-50'
-                                : ''} {dragGroupId === group.id && dropBeforeIndex === i
-                                ? 'border-t-primary border-t-2'
-                                : ''} {dragGroupId === group.id &&
-                              dropBeforeIndex === memberTitles.length &&
-                              i === memberTitles.length - 1
-                                ? 'border-b-primary border-b-2'
+                                ? 'hidden'
                                 : ''}"
-                              ondragenter={onRowDragEnter}
-                              ondragover={(e) => onRowDragOver(e, group, i)}
-                              ondrop={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                void onMemberDrop(group, e);
-                              }}
                             >
                               <span
                                 tabindex="-1"
                                 role="button"
                                 aria-grabbed={dragGroupId === group.id && dragTitle === title}
                                 class="text-muted-foreground inline-flex size-6 shrink-0 cursor-grab touch-none select-none active:cursor-grabbing"
-                                draggable="true"
-                                ondragstart={(e) => {
-                                  e.stopPropagation();
-                                  dragGroupId = group.id;
-                                  dragTitle = title;
-                                  dropBeforeIndex = i;
-                                  const dt = e.dataTransfer;
-                                  if (dt) {
-                                    dt.setData("text/plain", title);
-                                    dt.effectAllowed = "move";
-                                  }
-                                }}
-                                ondragend={onRowDragEnd}
+                                onpointerdown={(e) => onGripPointerDown(e, group, title, i)}
+                                onpointermove={onGripPointerMove}
+                                onpointerup={(e) => void onGripPointerUp(e)}
+                                onpointercancel={(e) => void onGripPointerUp(e)}
+                                onlostpointercapture={onGripLostCapture}
                               >
                                 <GripVerticalIcon class="size-4" aria-hidden="true" />
                               </span>
@@ -591,6 +618,9 @@
                               </Button>
                             </div>
                           {/each}
+                          {#if dragGroupId === group.id && dragTitle != null && dropBeforeIndex === memberTitles.length}
+                            {@render reorderDropSkeleton("mt-1", dragTitle)}
+                          {/if}
                         </div>
                       {/if}
             </Collapsible.Content>
