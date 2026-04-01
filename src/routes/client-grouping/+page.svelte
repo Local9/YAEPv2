@@ -16,8 +16,6 @@
   } from "$lib/components/ui/card";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
-  import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
-  import ArrowRightIcon from "@lucide/svelte/icons/arrow-right";
   import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
   import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
   import LayersIcon from "@lucide/svelte/icons/layers";
@@ -139,16 +137,6 @@
 
   function isCapturingHotkey(groupId: number, kind: GroupHotkeyCaptureKind): boolean {
     return captureHotkey?.groupId === groupId && captureHotkey?.kind === kind;
-  }
-
-  async function cycle(group: ClientGroupDetail, direction: "forward" | "backward") {
-    try {
-      await backend.cycleClientGroup(group.id, direction);
-      status = `Cycled ${group.name} (${direction})`;
-      error = "";
-    } catch (e) {
-      error = String(e);
-    }
   }
 
   async function createGroup() {
@@ -355,8 +343,7 @@
         <CardDescription>
           Organize thumbnail clients into groups. Order in each group defines next / previous hotkey
           cycling. Clients are matched by window title (same as thumbnails). Registered cycle hotkeys run only when the focused window is one of the clients currently
-          tracked by the thumbnail service (same PIDs as live thumbnails); the Cycle next / prev
-          buttons always work from this page.
+          tracked by the thumbnail service (same PIDs as live thumbnails).
         </CardDescription>
       </div>
     </div>
@@ -437,7 +424,7 @@
 
       <p class="text-muted-foreground mt-3 text-xs">
         Add clients from current thumbnail window titles. Press and drag the grip to reorder (pointer-based; the
-        a drop preview shows the client title and where it will land). Cycle hotkeys follow this order.
+        drop preview shows the client title and where it will land). Cycle hotkeys follow this order.
       </p>
 
       {#if groups.length === 0}
@@ -458,7 +445,7 @@
               </Collapsible.Trigger>
             </div>
             <Collapsible.Content class="border-border/80 border-t px-3 pb-3 pt-2">
-                      <div class="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <div class="mb-3 grid gap-3 sm:grid-cols-2">
                         <div>
                           <span class="text-muted-foreground mb-1 block text-xs">Forward hotkey</span>
                           <Input
@@ -513,25 +500,12 @@
                             }}
                           />
                         </div>
-                        <div class="flex flex-wrap items-end gap-2">
-                          <Button type="button" variant="outline" onclick={() => void cycle(group, "forward")}>
-                            <ArrowRightIcon class="size-4 shrink-0" aria-hidden="true" />
-                            Cycle next
-                          </Button>
-                          <Button type="button" variant="outline" onclick={() => void cycle(group, "backward")}>
-                            <ArrowLeftIcon class="size-4 shrink-0" aria-hidden="true" />
-                            Cycle prev
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            class="ml-auto"
-                            onclick={() => void removeGroup(group)}
-                          >
-                            <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
-                            Delete group
-                          </Button>
-                        </div>
+                      </div>
+                      <div class="mb-3 flex flex-wrap justify-end">
+                        <Button type="button" variant="destructive" onclick={() => void removeGroup(group)}>
+                          <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
+                          Delete group
+                        </Button>
                       </div>
 
                       <div class="mb-2">

@@ -232,13 +232,73 @@ fn remove_client_group_member(
 #[tauri::command]
 fn reorder_client_group_members(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     profile_id: i64,
     group_id: i64,
     window_titles_in_order: Vec<String>,
 ) -> Result<(), String> {
-    state
+    let old_titles: Vec<String> = state
         .db
-        .reorder_client_group_members(profile_id, group_id, window_titles_in_order)
+        .get_client_group_members(group_id)?
+        .into_iter()
+        .map(|m| m.window_title)
+        .collect();
+    let settings = state.db.get_thumbnail_settings(profile_id)?;
+    let slot_geometry: Vec<Option<(i64, i64, i64, i64)>> = old_titles
+        .iter()
+        .map(|t| {
+            settings
+                .iter()
+                .find(|s| s.window_title == *t)
+                .map(|s| {
+                    (
+                        s.config.x,
+                        s.config.y,
+                        s.config.width,
+                        s.config.height,
+                    )
+                })
+        })
+        .collect();
+
+    state.thumbnail_service.stop();
+    state.db.reorder_client_group_members(
+        profile_id,
+        group_id,
+        window_titles_in_order.clone(),
+    )?;
+
+    let ordered: Vec<String> = window_titles_in_order
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+
+    for (j, new_title) in ordered.iter().enumerate() {
+        let Some((x, y, w, h)) = slot_geometry.get(j).copied().flatten() else {
+            continue;
+        };
+        let Some(current) = settings.iter().find(|s| s.window_title == *new_title) else {
+            continue;
+        };
+        let mut next = current.config.clone();
+        next.x = clamp_position(x);
+        next.y = clamp_position(y);
+        next.width = w;
+        next.height = h;
+        state
+            .db
+            .save_thumbnail_setting(profile_id, new_title.clone(), next)?;
+    }
+
+    state.thumbnail_service.start(
+        app_handle,
+        state.db.clone(),
+        state.window_service.clone(),
+        state.dwm.clone(),
+    );
+    state.window_service.apply_grid_layout(&state.dwm);
+    Ok(())
 }
 
 #[tauri::command]
