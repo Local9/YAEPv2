@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { backend } from "$services/backend";
+  import { setMode } from "mode-watcher";
   import { Button } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import * as Select from "$lib/components/ui/select";
@@ -45,6 +46,7 @@
       await backend.setAppSetting("EnableThumbnailDragging", String(enableThumbnailDragging));
       await backend.setAppSetting("StartHidden", String(startHidden));
       await backend.setAppSetting("Theme", theme);
+      setMode(theme === "Light" ? "light" : "dark");
       saveStatus = "Settings saved";
       error = "";
     } catch (e) {

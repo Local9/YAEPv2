@@ -110,6 +110,106 @@ pub struct DrawerSettings {
     pub selected_mumble_server_group_id: Option<i64>,
 }
 
+fn default_widget_overlay_visible() -> bool {
+    true
+}
+
+fn default_widget_overlay_show_browser() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserQuickLink {
+    pub id: String,
+    pub url: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetOverlaySettings {
+    pub enabled: bool,
+    /// When `enabled` is true, controls whether the overlay window is actually shown (can be toggled from tray).
+    #[serde(default = "default_widget_overlay_visible")]
+    pub visible: bool,
+    pub monitor_index: i64,
+    #[serde(default = "default_widget_overlay_show_browser")]
+    pub show_browser_widget: bool,
+    /// When true (after hotkey/tray), non-pinned widgets are hidden; see `browser_always_displayed`.
+    #[serde(default)]
+    pub widgets_suppressed: bool,
+    /// Browser widget stays visible while `widgets_suppressed` is true.
+    #[serde(default)]
+    pub browser_always_displayed: bool,
+    /// Global hotkey string (e.g. `Ctrl+Shift+W`) to toggle `widgets_suppressed`.
+    #[serde(default)]
+    pub toggle_hotkey: String,
+    #[serde(default = "default_browser_quick_links_vec")]
+    pub browser_quick_links: Vec<BrowserQuickLink>,
+    #[serde(default)]
+    pub browser_default_url: Option<String>,
+    pub layout: WidgetOverlayLayout,
+}
+
+pub fn default_browser_quick_links() -> Vec<BrowserQuickLink> {
+    vec![
+        BrowserQuickLink {
+            id: "eve-uni-wiki".into(),
+            url: "https://wiki.eveuniversity.org/".into(),
+            title: "EVE University".into(),
+        },
+        BrowserQuickLink {
+            id: "dotlan".into(),
+            url: "https://evemaps.dotlan.net/".into(),
+            title: "dotlan".into(),
+        },
+        BrowserQuickLink {
+            id: "janice".into(),
+            url: "https://janice.e-351.com/".into(),
+            title: "Janice".into(),
+        },
+    ]
+}
+
+fn default_browser_quick_links_vec() -> Vec<BrowserQuickLink> {
+    default_browser_quick_links()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetOverlayLayout {
+    #[serde(default)]
+    pub browser: WidgetBrowserFrame,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetBrowserFrame {
+    #[serde(default = "default_browser_widget_url")]
+    pub url: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+fn default_browser_widget_url() -> String {
+    String::new()
+}
+
+impl Default for WidgetBrowserFrame {
+    fn default() -> Self {
+        Self {
+            url: default_browser_widget_url(),
+            x: 400.0,
+            y: 48.0,
+            width: 480.0,
+            height: 360.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MonitorInfoDto {

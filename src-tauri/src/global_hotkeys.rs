@@ -173,6 +173,7 @@ enum HotkeyAction {
     ActivateProfile(i64),
     CycleGroup { group_id: i64, forward: bool },
     OpenMumbleLink(i64),
+    ToggleWidgetOverlaySuppression,
 }
 
 pub fn request_refresh() {
@@ -694,6 +695,9 @@ fn dispatch_hotkey_action(action: HotkeyAction) {
             HotkeyAction::OpenMumbleLink(link_id) => {
                 let _ = crate::open_mumble_link_internal(&*state, link_id);
             }
+            HotkeyAction::ToggleWidgetOverlaySuppression => {
+                let _ = crate::widget_overlay::toggle_widgets_suppressed(&app_on_main, state.db.as_ref());
+            }
         }
     });
 }
@@ -792,6 +796,15 @@ fn refresh_registrations(hwnd: HWND, db: &DbService, registered: &mut Vec<i32>) 
                 HotkeyAction::OpenMumbleLink(link.id),
             );
         }
+    }
+
+    if let Ok(wo) = crate::widget_overlay::load_settings(db) {
+        push(
+            &mut table,
+            &mut next_id,
+            &wo.toggle_hotkey,
+            HotkeyAction::ToggleWidgetOverlaySuppression,
+        );
     }
 }
 

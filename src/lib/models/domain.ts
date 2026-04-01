@@ -80,6 +80,54 @@ export type HealthSnapshot = {
   activeProfileId: number | null;
 };
 
+/** Position and size for the overlay widget shell (drag/resize). */
+export type WidgetLayoutRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type WidgetBrowserFrame = WidgetLayoutRect & {
+  url: string;
+};
+
+export type WidgetOverlayLayout = {
+  browser: WidgetBrowserFrame;
+};
+
+export type BrowserQuickLink = {
+  id: string;
+  url: string;
+  title: string;
+};
+
+/** Preset quick links; kept in sync with `default_browser_quick_links` in the Rust backend. */
+export const DEFAULT_BROWSER_QUICK_LINKS: BrowserQuickLink[] = [
+  { id: "eve-uni-wiki", url: "https://wiki.eveuniversity.org/", title: "EVE University" },
+  { id: "dotlan", url: "https://evemaps.dotlan.net/", title: "dotlan" },
+  { id: "janice", url: "https://janice.e-351.com/", title: "Janice" }
+];
+
+export type WidgetOverlaySettings = {
+  enabled: boolean;
+  /** When enabled, whether the overlay window is shown (toggle from tray or here). */
+  visible: boolean;
+  monitorIndex: number;
+  showBrowserWidget: boolean;
+  /** When true, non-pinned widgets are hidden; overlay window stays open. */
+  widgetsSuppressed: boolean;
+  /** Browser widget stays visible while widgets are suppressed. */
+  browserAlwaysDisplayed: boolean;
+  /** Hotkey chord to toggle `widgetsSuppressed` (RegisterHotKey). */
+  toggleHotkey: string;
+  /** User-editable shortcuts shown when the browser URL is empty (new-tab style). */
+  browserQuickLinks: BrowserQuickLink[];
+  /** If set, this URL loads when the overlay opens while the saved layout URL is empty. */
+  browserDefaultUrl: string | null;
+  layout: WidgetOverlayLayout;
+};
+
 export type RuntimeThumbnailSnapshot = {
   pid: number;
   windowTitle: string;

@@ -11,7 +11,10 @@ import type {
   Profile,
   RuntimeThumbnailStateSnapshot,
   ThumbnailConfig,
-  ThumbnailSetting
+  ThumbnailSetting,
+  BrowserQuickLink,
+  WidgetOverlayLayout,
+  WidgetOverlaySettings
 } from "$models/domain";
 
 // Security boundary note: renderer values are untrusted.
@@ -174,5 +177,26 @@ export const backend = {
   },
   eveFetchCharacterName(characterId: number): Promise<string> {
     return invoke("eve_fetch_character_name", { characterId });
+  },
+  widgetOverlayGetSettings(): Promise<WidgetOverlaySettings> {
+    return invoke("widget_overlay_get_settings");
+  },
+  widgetOverlaySaveSettings(settings: WidgetOverlaySettings): Promise<void> {
+    return invoke("widget_overlay_save_settings", { settings });
+  },
+  widgetOverlaySaveLayout(layout: WidgetOverlayLayout): Promise<void> {
+    return invoke("widget_overlay_save_layout", { layout });
+  },
+  widgetOverlaySaveBrowserQuickLinks(
+    links: BrowserQuickLink[],
+    defaultUrl: string | null
+  ): Promise<void> {
+    return invoke("widget_overlay_save_browser_quick_links", { links, defaultUrl });
+  },
+  widgetOverlayRefresh(): Promise<void> {
+    return invoke("widget_overlay_refresh");
+  },
+  widgetOverlayToggle(): Promise<boolean> {
+    return invoke("widget_overlay_toggle");
   }
 };

@@ -46,7 +46,8 @@
       }
     </style>
     <script>
-      if (window.location.pathname.startsWith("/thumbnail-overlay")) {
+      const p = window.location.pathname;
+      if (p.startsWith("/thumbnail-overlay") || p.startsWith("/widget-overlay")) {
         document.documentElement.setAttribute("data-no-boot-splash", "true");
       }
     </script>

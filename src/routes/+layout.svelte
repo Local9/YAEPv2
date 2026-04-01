@@ -1,7 +1,8 @@
 <script lang="ts">
   import "../app.css";
   import { onMount } from "svelte";
-  import { ModeWatcher } from "mode-watcher";
+  import { ModeWatcher, mode, setMode } from "mode-watcher";
+  import { emit } from "@tauri-apps/api/event";
   import { page } from "$app/state";
   import type { LayoutProps } from "./$types";
   import { backend } from "$services/backend";
@@ -12,6 +13,7 @@
   import LayersIcon from "@lucide/svelte/icons/layers";
   import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
   import RadioIcon from "@lucide/svelte/icons/radio";
+  import LayoutPanelIcon from "@lucide/svelte/icons/layout-panel-top";
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import UsersIcon from "@lucide/svelte/icons/users";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
@@ -21,8 +23,17 @@
   let { children }: LayoutProps = $props();
   let appLoading = $state(true);
   let appLoadError = $state("");
+  /** Avoid duplicate SQLite/event writes when mode has not changed. */
+  let lastSyncedTheme = $state<"Dark" | "Light" | null>(null);
 
-  const sections = [
+  type NavSection = {
+    href: string;
+    label: string;
+    Icon: typeof LayoutDashboardIcon;
+    exact?: boolean;
+  };
+
+  const sections: NavSection[] = [
     { href: "/", label: "Dashboard", Icon: LayoutDashboardIcon },
     { href: "/profiles", label: "Profiles", Icon: UsersIcon },
     { href: "/thumbnail-settings", label: "Thumbnail Settings", Icon: ImageIcon },
@@ -31,24 +42,34 @@
     { href: "/process-management", label: "Process Management", Icon: CpuIcon },
     { href: "/mumble-links", label: "Mumble Links", Icon: RadioIcon },
     { href: "/eve-profiles", label: "EVE Profiles", Icon: Gamepad2Icon },
-    { href: "/settings", label: "Settings", Icon: SettingsIcon },
-  ] as const;
+    { href: "/settings", label: "Settings", Icon: SettingsIcon, exact: true },
+    { href: "/settings/widget-overlay", label: "Widget overlay", Icon: LayoutPanelIcon }
+  ];
 
   let isThumbnailOverlay = $derived(page.url.pathname.startsWith("/thumbnail-overlay"));
+  let isWidgetOverlay = $derived(page.url.pathname.startsWith("/widget-overlay"));
 
-  function navItemActive(href: string, pathname: string): boolean {
+  function navItemActive(href: string, pathname: string, exact?: boolean): boolean {
+    if (exact) return pathname === href;
     if (href === "/") return pathname === "/";
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
   onMount(() => {
-    if (isThumbnailOverlay) {
+    if (isThumbnailOverlay || isWidgetOverlay) {
       appLoading = false;
       document.getElementById("boot-splash")?.remove();
       return;
     }
 
     void (async () => {
+      try {
+        const t = await backend.getAppSetting("Theme");
+        if (t === "Light") setMode("light");
+        else if (t === "Dark") setMode("dark");
+      } catch {
+        /* ignore */
+      }
       try {
         await backend.appReady();
       } catch {
@@ -59,9 +80,20 @@
       }
     })();
   });
+
+  $effect(() => {
+    if (isThumbnailOverlay || isWidgetOverlay || appLoading) return;
+    const m = mode.current;
+    if (m !== "light" && m !== "dark") return;
+    const theme: "Dark" | "Light" = m === "light" ? "Light" : "Dark";
+    if (theme === lastSyncedTheme) return;
+    lastSyncedTheme = theme;
+    void backend.setAppSetting("Theme", theme).catch(() => {});
+    void emit("app-theme-changed", { theme }).catch(() => {});
+  });
 </script>
 
-{#if isThumbnailOverlay}
+{#if isThumbnailOverlay || isWidgetOverlay}
   {@render children?.()}
 {:else if appLoading}
   <div class="flex min-h-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
@@ -106,16 +138,16 @@
           <Sidebar.GroupLabel>Navigation</Sidebar.GroupLabel>
           <Sidebar.GroupContent>
             <Sidebar.Menu>
-              {#each sections as { href, label, Icon } (href)}
+              {#each sections as nav (nav.href)}
                 <Sidebar.MenuItem>
                   <Sidebar.MenuButton
-                    isActive={navItemActive(href, page.url.pathname)}
-                    tooltipContent={label}
+                    isActive={navItemActive(nav.href, page.url.pathname, nav.exact)}
+                    tooltipContent={nav.label}
                   >
                     {#snippet child({ props })}
-                      <a {href} {...props}>
-                        <Icon aria-hidden="true" />
-                        <span>{label}</span>
+                      <a href={nav.href} {...props}>
+                        <nav.Icon aria-hidden="true" />
+                        <span>{nav.label}</span>
                       </a>
                     {/snippet}
                   </Sidebar.MenuButton>

@@ -11,6 +11,7 @@ mod models;
 mod monitors;
 mod thumbnail_service;
 mod thumbnail_webview_overlay;
+mod widget_overlay;
 mod windows;
 
 use serde::Deserialize;
@@ -29,11 +30,13 @@ use crate::eve_profile_tools::EveProfileToolsService;
 use crate::hotkeys::HotkeyService;
 use crate::models::{
     ClientGroup, ClientGroupDetail, DrawerSettings, GridLayoutPayload, GridLayoutPreviewItem,
-    HealthSnapshot, MonitorInfoDto, MumbleLink, MumbleLinksOverlaySettings, MumbleServerGroup,
-    Profile, ThumbnailConfig, ThumbnailSetting,
+    HealthSnapshot, MonitorInfoDto, MumbleLink,     MumbleLinksOverlaySettings, MumbleServerGroup,
+    BrowserQuickLink, Profile, ThumbnailConfig, ThumbnailSetting, WidgetOverlayLayout,
+    WidgetOverlaySettings,
 };
 use crate::thumbnail_service::{RuntimeThumbnailStateSnapshot, ThumbnailService};
 use crate::thumbnail_webview_overlay::ThumbnailOverlayStatePayload;
+use crate::widget_overlay::WidgetOverlayHitRect;
 use crate::windows::WindowService;
 
 const GENERIC_OPERATION_ERROR: &str = "Operation failed. Check diagnostics for details.";
@@ -818,6 +821,60 @@ fn get_thumbnail_overlay_state(
     state.dwm.snapshot_thumbnail_overlay_state(&overlay_id)
 }
 
+#[tauri::command]
+fn widget_overlay_get_settings(state: State<'_, AppState>) -> Result<WidgetOverlaySettings, String> {
+    widget_overlay::load_settings(&state.db)
+}
+
+#[tauri::command]
+fn widget_overlay_save_settings(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    settings: WidgetOverlaySettings,
+) -> Result<(), String> {
+    widget_overlay::save_settings(&state.db, &settings)?;
+    widget_overlay::sync_widget_overlay_from_db(&app_handle, &state.db);
+    refresh_global_hotkeys();
+    let _ = app_handle.emit("widget-overlay-settings-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn widget_overlay_save_layout(state: State<'_, AppState>, layout: WidgetOverlayLayout) -> Result<(), String> {
+    widget_overlay::save_layout_only(&state.db, &layout)
+}
+
+#[tauri::command]
+fn widget_overlay_save_browser_quick_links(
+    state: State<'_, AppState>,
+    links: Vec<BrowserQuickLink>,
+    default_url: Option<String>,
+) -> Result<(), String> {
+    widget_overlay::save_browser_quick_links_only(&state.db, &links, default_url.as_deref())
+}
+
+#[tauri::command]
+fn widget_overlay_refresh(state: State<'_, AppState>, app_handle: AppHandle) -> Result<(), String> {
+    widget_overlay::sync_widget_overlay_from_db(&app_handle, &state.db);
+    Ok(())
+}
+
+#[tauri::command]
+fn widget_overlay_update_hit_regions(rects: Vec<WidgetOverlayHitRect>) {
+    widget_overlay::update_hit_regions(rects);
+}
+
+#[tauri::command]
+fn widget_overlay_set_dragging(dragging: bool) {
+    widget_overlay::set_dragging(dragging);
+}
+
+/// Toggles `widgets_suppressed` (hide non-pinned widgets). Overlay window stays open.
+#[tauri::command]
+fn widget_overlay_toggle(state: State<'_, AppState>, app_handle: AppHandle) -> Result<bool, String> {
+    widget_overlay::toggle_widgets_suppressed(&app_handle, state.db.as_ref())
+}
+
 pub fn run() {
     diag::install_panic_hook();
     diag::trace("boot", "run() entered");
@@ -867,6 +924,11 @@ pub fn run() {
                         }
                     }
                 }
+            }
+            {
+                let db = app.state::<AppState>().db.clone();
+                widget_overlay::ensure_cursor_poll(app.handle());
+                widget_overlay::sync_widget_overlay_from_db(app.handle(), &db);
             }
             diag::trace("boot", "tauri setup callback complete");
             Ok(())
@@ -922,7 +984,15 @@ pub fn run() {
             activate_window_by_pid,
             app_ready,
             get_runtime_thumbnail_state,
-            get_thumbnail_overlay_state
+            get_thumbnail_overlay_state,
+            widget_overlay_get_settings,
+            widget_overlay_save_settings,
+            widget_overlay_save_layout,
+            widget_overlay_save_browser_quick_links,
+            widget_overlay_refresh,
+            widget_overlay_update_hit_regions,
+            widget_overlay_set_dragging,
+            widget_overlay_toggle
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {
@@ -986,7 +1056,10 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut menu_builder = MenuBuilder::new(app);
     let show_item = MenuItemBuilder::new("Show").id("tray.show").build(app)?;
-    menu_builder = menu_builder.item(&show_item);
+    let widget_overlay_toggle_item = MenuItemBuilder::new("Toggle widget visibility")
+        .id("tray.widget_overlay_toggle")
+        .build(app)?;
+    menu_builder = menu_builder.item(&show_item).item(&widget_overlay_toggle_item);
 
     for profile in profiles {
         let label = if profile.is_active {
@@ -1019,6 +1092,13 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             let id = event.id.as_ref();
             if id == "tray.show" {
                 show_main_window_from_tray(app);
+                return;
+            }
+            if id == "tray.widget_overlay_toggle" {
+                let state = app.state::<AppState>();
+                if let Err(e) = crate::widget_overlay::toggle_widgets_suppressed(app, state.db.as_ref()) {
+                    eprintln!("tray: widget overlay toggle: {e}");
+                }
                 return;
             }
             if id == "tray.exit" {
