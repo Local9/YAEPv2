@@ -35,6 +35,13 @@
   import CrosshairIcon from "@lucide/svelte/icons/crosshair";
   import MonitorIcon from "@lucide/svelte/icons/monitor";
   import PlayIcon from "@lucide/svelte/icons/play";
+  import {
+    buildGridLayoutPayload,
+    formatMonitorLabel,
+    monitorWorkOffset as computeMonitorWorkOffset,
+    syncHeightFromWidth as computeHeightFromWidth,
+    syncWidthFromHeight as computeWidthFromHeight,
+  } from "./grid-layout-helpers";
 
   const ASPECT_RATIO_OPTIONS = ["21:9", "21:4", "16:9", "4:3", "1:1"] as const;
 
@@ -66,54 +73,40 @@
   const CELL_H_MIN = 108;
   const CELL_H_MAX = 540;
 
-  function parseAspectRatio(ratio: string): { rw: number; rh: number } {
-    const trimmed = ratio.trim();
-    const sep = trimmed.split(":");
-    if (sep.length !== 2) return { rw: 16, rh: 9 };
-    const rw = Number.parseFloat(sep[0].trim());
-    const rh = Number.parseFloat(sep[1].trim());
-    if (!Number.isFinite(rw) || !Number.isFinite(rh) || rw <= 0 || rh <= 0) {
-      return { rw: 16, rh: 9 };
-    }
-    return { rw, rh };
-  }
-
-  function clamp(n: number, lo: number, hi: number): number {
-    return Math.max(lo, Math.min(hi, n));
-  }
-
   /** Keep current width; set height from ratio, then clamp both to slider bounds. */
   function syncHeightFromWidth(width = gridCellWidth) {
-    const { rw, rh } = parseAspectRatio(selectedAspectRatio);
-    gridCellWidth = clamp(width, CELL_W_MIN, CELL_W_MAX);
-    let nextH = Math.round((gridCellWidth * rh) / rw);
-    nextH = clamp(nextH, CELL_H_MIN, CELL_H_MAX);
-    gridCellHeight = nextH;
-    gridCellWidth = clamp(Math.round((gridCellHeight * rw) / rh), CELL_W_MIN, CELL_W_MAX);
-    gridCellHeight = clamp(Math.round((gridCellWidth * rh) / rw), CELL_H_MIN, CELL_H_MAX);
+    const next = computeHeightFromWidth({
+      ratio: selectedAspectRatio,
+      width,
+      height: gridCellHeight,
+      minWidth: CELL_W_MIN,
+      maxWidth: CELL_W_MAX,
+      minHeight: CELL_H_MIN,
+      maxHeight: CELL_H_MAX,
+    });
+    gridCellWidth = next.width;
+    gridCellHeight = next.height;
   }
 
   /** Keep current height; set width from ratio, then clamp both to slider bounds. */
   function syncWidthFromHeight(height = gridCellHeight) {
-    const { rw, rh } = parseAspectRatio(selectedAspectRatio);
-    gridCellHeight = clamp(height, CELL_H_MIN, CELL_H_MAX);
-    let nextW = Math.round((gridCellHeight * rw) / rh);
-    nextW = clamp(nextW, CELL_W_MIN, CELL_W_MAX);
-    gridCellWidth = nextW;
-    gridCellHeight = clamp(Math.round((gridCellWidth * rh) / rw), CELL_H_MIN, CELL_H_MAX);
+    const next = computeWidthFromHeight({
+      ratio: selectedAspectRatio,
+      width: gridCellWidth,
+      height,
+      minWidth: CELL_W_MIN,
+      maxWidth: CELL_W_MAX,
+      minHeight: CELL_H_MIN,
+      maxHeight: CELL_H_MAX,
+    });
+    gridCellWidth = next.width;
+    gridCellHeight = next.height;
   }
 
   $effect(() => {
     void selectedAspectRatio;
     untrack(() => syncHeightFromWidth());
   });
-
-  function formatMonitorLabel(m: MonitorInfoDto): string {
-    const widthPx = m.right - m.left;
-    const heightPx = m.bottom - m.top;
-    const primary = m.isPrimary ? " (Primary)" : "";
-    return `#${m.index} - ${m.name || "Display"}${primary} - ${widthPx}x${heightPx} @ (${m.left}, ${m.top})`;
-  }
 
   let monitorTriggerLabel = $derived.by(() => {
     if (selectedMonitorIndex === "") return "All / default origin";
@@ -131,10 +124,7 @@
   ]);
 
   function monitorWorkOffset(): { ox: number; oy: number } {
-    if (selectedMonitorIndex === "") return { ox: 0, oy: 0 };
-    const m = monitors.find((x) => String(x.index) === selectedMonitorIndex);
-    if (!m) return { ox: 0, oy: 0 };
-    return { ox: m.workLeft, oy: m.workTop };
+    return computeMonitorWorkOffset(selectedMonitorIndex, monitors);
   }
 
   let anchorDerivedStart = $derived.by(() => {
@@ -170,24 +160,21 @@
   let useAnchorOrigin = $derived(selectedAnchorTitle !== "");
 
   function buildPayload(): GridLayoutPayload | null {
-    if (activeProfileId == null) {
-      error = "No active profile available";
-      return null;
-    }
-    return {
-      profileId: activeProfileId,
+    const { payload, error: payloadError } = buildGridLayoutPayload({
+      activeProfileId,
       gridCellWidth,
       gridCellHeight,
-      gridCellRatio: null,
       gridStartX,
       gridStartY,
       gridColumns,
-      selectedGroupId: null,
       onlyAffectActiveThumbnails,
-      selectedMonitorIndex:
-        selectedMonitorIndex === "" ? null : Number.parseInt(selectedMonitorIndex, 10),
-      gridAnchorWindowTitle: selectedAnchorTitle === "" ? null : selectedAnchorTitle,
-    };
+      selectedMonitorIndex,
+      selectedAnchorTitle,
+    });
+    if (payload == null && payloadError) {
+      error = payloadError;
+    }
+    return payload;
   }
 
   async function loadContext() {

@@ -22,6 +22,7 @@
   import PlusIcon from "@lucide/svelte/icons/plus";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import { Skeleton } from "$lib/components/ui/skeleton";
+  import { availableToAdd, orderedMemberTitles, reorderTitles } from "./client-grouping-helpers";
 
   const CLIENT_GROUP_FORWARD_CAPTURE = "clientGroupCycleForward";
   const CLIENT_GROUP_BACKWARD_CAPTURE = "clientGroupCycleBackward";
@@ -64,19 +65,7 @@
   /** Which group is capturing a cycle hotkey (forward or backward), if any. */
   let captureHotkey = $state<{ groupId: number; kind: GroupHotkeyCaptureKind } | null>(null);
 
-  function orderedMemberTitles(g: ClientGroupDetail): string[] {
-    return [...g.members]
-      .sort(
-        (a, b) =>
-          a.displayOrder - b.displayOrder || a.windowTitle.localeCompare(b.windowTitle),
-      )
-      .map((m) => m.windowTitle);
-  }
-
-  function availableToAdd(g: ClientGroupDetail): string[] {
-    const inGroup = new Set(g.members.map((m) => m.windowTitle));
-    return thumbnailSettings.map((t) => t.windowTitle).filter((t) => !inGroup.has(t));
-  }
+  const availableToAddForGroup = (g: ClientGroupDetail) => availableToAdd(g, thumbnailSettings);
 
   async function refresh() {
     profiles = await backend.getProfiles();
@@ -199,15 +188,6 @@
     } catch (e) {
       error = String(e);
     }
-  }
-
-  function reorderTitles(list: string[], fromIndex: number, toBeforeIndex: number): string[] {
-    const next = [...list];
-    const [item] = next.splice(fromIndex, 1);
-    let dest = toBeforeIndex;
-    if (fromIndex < dest) dest -= 1;
-    next.splice(dest, 0, item);
-    return next;
   }
 
   function clearMemberReorderState() {
@@ -513,7 +493,7 @@
                         <label class="text-muted-foreground mb-1 block text-xs" for="add-client-{group.id}">
                           Add client to group
                         </label>
-                        {#if availableToAdd(group).length === 0}
+                        {#if availableToAddForGroup(group).length === 0}
                           <p class="text-muted-foreground text-xs">
                             All thumbnail clients are already in this group, or there are no thumbnails yet.
                           </p>
@@ -528,7 +508,7 @@
                             }}
                           >
                             <option value="">Choose a window title...</option>
-                            {#each availableToAdd(group) as title (title)}
+                            {#each availableToAddForGroup(group) as title (title)}
                               <option value={title}>{title}</option>
                             {/each}
                           </select>

@@ -1037,3 +1037,41 @@ fn resolve_grid_cell_height(
 fn clamp_position(value: i64) -> i64 {
     value.clamp(-10_000, 31_000)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{clamp_position, resolve_grid_cell_height};
+
+    #[test]
+    fn resolve_grid_cell_height_uses_explicit_height_when_valid() {
+        let height = resolve_grid_cell_height(600, Some(240), None).expect("expected explicit height");
+        assert_eq!(height, 240);
+    }
+
+    #[test]
+    fn resolve_grid_cell_height_rejects_non_positive_explicit_height() {
+        let error = resolve_grid_cell_height(600, Some(0), None).expect_err("expected validation error");
+        assert_eq!(error, "Grid cell height must be greater than zero");
+    }
+
+    #[test]
+    fn resolve_grid_cell_height_parses_ratio_and_rounds_result() {
+        let height = resolve_grid_cell_height(500, None, Some("16:9".to_string()))
+            .expect("expected ratio-derived height");
+        assert_eq!(height, 281);
+    }
+
+    #[test]
+    fn resolve_grid_cell_height_rejects_invalid_ratio_format() {
+        let error = resolve_grid_cell_height(500, None, Some("16x9".to_string()))
+            .expect_err("expected format error");
+        assert_eq!(error, "Grid ratio must use w:h format");
+    }
+
+    #[test]
+    fn clamp_position_limits_values_to_supported_bounds() {
+        assert_eq!(clamp_position(-20_000), -10_000);
+        assert_eq!(clamp_position(42), 42);
+        assert_eq!(clamp_position(40_000), 31_000);
+    }
+}

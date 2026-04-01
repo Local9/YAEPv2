@@ -5,4 +5,8 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
   clearScreen: false,
+  test: {
+    include: ["src/**/*.test.ts"],
+    environment: "node",
+  },
 });
