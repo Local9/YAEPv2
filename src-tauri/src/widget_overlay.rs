@@ -2,6 +2,7 @@
 //! Windows uses a cursor poll loop to toggle `set_ignore_cursor_events` so only widget rects capture input.
 
 use serde::Deserialize;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, Once};
 use std::time::Duration;
@@ -30,13 +31,14 @@ pub struct WidgetOverlayHitRect {
 }
 
 fn widget_overlay_url() -> Result<WebviewUrl, String> {
-    #[cfg(debug_assertions)]
-    let s = "http://localhost:5173/widget-overlay";
-    #[cfg(not(debug_assertions))]
-    let s = "https://tauri.localhost/widget-overlay";
-    Ok(WebviewUrl::External(
-        s.parse::<url::Url>().map_err(|e| e.to_string())?,
-    ))
+    if tauri::is_dev() {
+        let s = "http://localhost:5173/widget-overlay";
+        Ok(WebviewUrl::External(
+            s.parse::<url::Url>().map_err(|e| e.to_string())?,
+        ))
+    } else {
+        Ok(WebviewUrl::App(PathBuf::from("widget-overlay")))
+    }
 }
 
 pub fn load_settings(db: &DbService) -> Result<WidgetOverlaySettings, String> {

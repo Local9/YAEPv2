@@ -11,6 +11,7 @@
 
 #[cfg(target_os = "windows")]
 use std::ffi::c_void;
+use std::path::PathBuf;
 
 use serde::Serialize;
 use tauri::window::Color;
@@ -60,19 +61,17 @@ fn overlay_anchor_window_label_from_overlay_label(overlay_label: &str) -> String
 }
 
 fn overlay_entry_url(_app: &AppHandle, overlay_id: &str, pid: u32) -> Result<WebviewUrl, String> {
-    #[cfg(debug_assertions)]
-    let s = format!(
-        "http://localhost:5173/thumbnail-overlay?overlayId={}&pid={}",
-        overlay_id, pid
-    );
-    #[cfg(not(debug_assertions))]
-    let s = format!(
-        "https://tauri.localhost/thumbnail-overlay?overlayId={}&pid={}",
-        overlay_id, pid
-    );
-    Ok(WebviewUrl::External(
-        s.parse::<url::Url>().map_err(|e| e.to_string())?,
-    ))
+    // Match Tauri dev vs production (`custom-protocol`), not Rust debug_assertions:
+    // `tauri dev --release` is still dev (Vite) but would wrongly use tauri.localhost otherwise.
+    let path_with_query = format!("thumbnail-overlay?overlayId={overlay_id}&pid={pid}");
+    if tauri::is_dev() {
+        let s = format!("http://localhost:5173/{path_with_query}");
+        Ok(WebviewUrl::External(
+            s.parse::<url::Url>().map_err(|e| e.to_string())?,
+        ))
+    } else {
+        Ok(WebviewUrl::App(PathBuf::from(path_with_query)))
+    }
 }
 
 /// Opens the overlay as a **separate** top-level window, **owned** by the native thumbnail HWND on Windows
