@@ -7,88 +7,15 @@
   import BrowserWidget from "$lib/components/widget-overlay/browser-widget.svelte";
   import MumbleLinksWidget from "$lib/components/widget-overlay/mumble-links-widget.svelte";
   import WidgetWrapper from "$lib/components/widget-overlay/widget-wrapper.svelte";
+  import { type WidgetSnapshot, type WidgetOverlaySettings } from "$models/domain";
   import {
-    DEFAULT_BROWSER_QUICK_LINKS,
-    type WidgetSnapshot,
-    type WidgetBrowserFrame,
-    type WidgetOverlaySettings
-  } from "$models/domain";
-
-  const DEFAULT_BROWSER: WidgetBrowserFrame = {
-    url: "",
-    x: 400,
-    y: 48,
-    width: 480,
-    height: 360
-  };
-
-  function finiteOr(n: unknown, fallback: number): number {
-    return typeof n === "number" && Number.isFinite(n) ? n : fallback;
-  }
-
-  function normalizeBrowser(b: WidgetOverlaySettings["layout"]["browser"] | undefined): WidgetBrowserFrame {
-    if (!b) return { ...DEFAULT_BROWSER };
-    const url = typeof b.url === "string" ? b.url.trim() : "";
-    return {
-      url,
-      x: finiteOr(b.x, DEFAULT_BROWSER.x),
-      y: finiteOr(b.y, DEFAULT_BROWSER.y),
-      width: finiteOr(b.width, DEFAULT_BROWSER.width),
-      height: finiteOr(b.height, DEFAULT_BROWSER.height)
-    };
-  }
-
-  function mergeOverlaySettings(loaded: WidgetOverlaySettings): WidgetOverlaySettings {
-    const browserQuickLinks =
-      Array.isArray(loaded.browserQuickLinks) && loaded.browserQuickLinks.length > 0
-        ? loaded.browserQuickLinks
-        : DEFAULT_BROWSER_QUICK_LINKS;
-    const browserDefaultUrl =
-      loaded.browserDefaultUrl != null && String(loaded.browserDefaultUrl).trim()
-        ? String(loaded.browserDefaultUrl).trim()
-        : null;
-    let browser = normalizeBrowser(loaded.layout.browser);
-    if (!browser.url && browserDefaultUrl) {
-      browser = { ...browser, url: browserDefaultUrl };
-    }
-    return {
-      ...loaded,
-      browserQuickLinks,
-      browserDefaultUrl,
-      widgetsSuppressed: loaded.widgetsSuppressed ?? false,
-      browserAlwaysDisplayed: loaded.browserAlwaysDisplayed ?? false,
-      showFleetMotdWidget: loaded.showFleetMotdWidget ?? true,
-      showIntelFeedWidget: loaded.showIntelFeedWidget ?? true,
-      showMumbleLinksWidget: loaded.showMumbleLinksWidget ?? true,
-      fleetMotdAlwaysDisplayed: loaded.fleetMotdAlwaysDisplayed ?? false,
-      intelFeedAlwaysDisplayed: loaded.intelFeedAlwaysDisplayed ?? false,
-      mumbleLinksAlwaysDisplayed: loaded.mumbleLinksAlwaysDisplayed ?? false,
-      toggleHotkey: loaded.toggleHotkey ?? "",
-      layout: {
-        ...loaded.layout,
-        browser,
-        fleetMotd: loaded.layout.fleetMotd ?? { x: 24, y: 24, width: 420, height: 180 },
-        intelFeed: loaded.layout.intelFeed ?? { x: 24, y: 220, width: 560, height: 280 },
-        mumbleLinks: loaded.layout.mumbleLinks ?? { x: 24, y: 520, width: 200, height: 88 }
-      }
-    };
-  }
-
-  function browserWidgetRenderedVisible(s: WidgetOverlaySettings): boolean {
-    return s.showBrowserWidget && (!s.widgetsSuppressed || s.browserAlwaysDisplayed);
-  }
-
-  function fleetMotdRenderedVisible(s: WidgetOverlaySettings): boolean {
-    return s.showFleetMotdWidget && (!s.widgetsSuppressed || s.fleetMotdAlwaysDisplayed);
-  }
-
-  function intelFeedRenderedVisible(s: WidgetOverlaySettings): boolean {
-    return s.showIntelFeedWidget && (!s.widgetsSuppressed || s.intelFeedAlwaysDisplayed);
-  }
-
-  function mumbleLinksRenderedVisible(s: WidgetOverlaySettings): boolean {
-    return s.showMumbleLinksWidget && (!s.widgetsSuppressed || s.mumbleLinksAlwaysDisplayed);
-  }
+    createDefaultWidgetOverlaySettings,
+    isWidgetOverlayWidgetVisible,
+    mergeWidgetOverlaySettings,
+    widgetOverlayHitRectsFromDom,
+    widgetOverlayOpenMenuHitRects,
+    withWidgetOverlayDefaultBrowserUrl
+  } from "$services/widgets";
 
   let settings = $state<WidgetOverlaySettings | null>(null);
   let browserCardEl = $state<HTMLElement | undefined>(undefined);
@@ -216,17 +143,6 @@
     }
   }
 
-  function physicalRect(el: HTMLElement) {
-    const dpr = window.devicePixelRatio ?? 1;
-    const r = el.getBoundingClientRect();
-    return {
-      x: Math.round(r.left * dpr),
-      y: Math.round(r.top * dpr),
-      width: Math.round(r.width * dpr),
-      height: Math.round(r.height * dpr)
-    };
-  }
-
   async function pushHitRegions() {
     if (!settings) {
       try {
@@ -236,19 +152,15 @@
       }
       return;
     }
-    const rects: ReturnType<typeof physicalRect>[] = [];
-    if (browserWidgetRenderedVisible(settings) && browserCardEl) {
-      rects.push(physicalRect(browserCardEl));
-    }
-    if (fleetMotdRenderedVisible(settings) && fleetMotdCardEl) {
-      rects.push(physicalRect(fleetMotdCardEl));
-    }
-    if (intelFeedRenderedVisible(settings) && intelFeedCardEl) {
-      rects.push(physicalRect(intelFeedCardEl));
-    }
-    if (mumbleLinksRenderedVisible(settings) && mumbleLinksCardEl) {
-      rects.push(physicalRect(mumbleLinksCardEl));
-    }
+    const rects = [
+      ...widgetOverlayHitRectsFromDom(settings, {
+        browser: browserCardEl,
+        fleetMotd: fleetMotdCardEl,
+        intelFeed: intelFeedCardEl,
+        mumbleLinks: mumbleLinksCardEl
+      }),
+      ...widgetOverlayOpenMenuHitRects()
+    ];
     try {
       await invoke("widget_overlay_update_hit_regions", { rects });
     } catch {
@@ -281,31 +193,9 @@
   async function reloadSettingsFromBackend() {
     try {
       const loaded = await invoke<WidgetOverlaySettings>("widget_overlay_get_settings");
-      settings = mergeOverlaySettings(loaded);
+      settings = withWidgetOverlayDefaultBrowserUrl(mergeWidgetOverlaySettings(loaded));
     } catch {
-      settings = {
-        enabled: true,
-        visible: true,
-        monitorIndex: 0,
-        showBrowserWidget: true,
-        showFleetMotdWidget: true,
-        showIntelFeedWidget: true,
-        showMumbleLinksWidget: true,
-        widgetsSuppressed: false,
-        browserAlwaysDisplayed: false,
-        fleetMotdAlwaysDisplayed: false,
-        intelFeedAlwaysDisplayed: false,
-        mumbleLinksAlwaysDisplayed: false,
-        toggleHotkey: "",
-        browserQuickLinks: [...DEFAULT_BROWSER_QUICK_LINKS],
-        browserDefaultUrl: null,
-        layout: {
-          browser: { ...DEFAULT_BROWSER },
-          fleetMotd: { x: 24, y: 24, width: 420, height: 180 },
-          intelFeed: { x: 24, y: 220, width: 560, height: 280 },
-          mumbleLinks: { x: 24, y: 520, width: 200, height: 88 }
-        }
-      };
+      settings = withWidgetOverlayDefaultBrowserUrl(createDefaultWidgetOverlaySettings());
     }
     await pushHitRegions();
   }
@@ -345,7 +235,7 @@
 </script>
 
 <div class="widget-overlay-root">
-  {#if settings && browserWidgetRenderedVisible(settings)}
+  {#if settings && isWidgetOverlayWidgetVisible("browser", settings)}
     <BrowserWidget
       bind:browser={settings.layout.browser}
       bind:pinned={settings.browserAlwaysDisplayed}
@@ -355,7 +245,7 @@
       onPinnedPersist={persistOverlaySettings}
     />
   {/if}
-  {#if settings && fleetMotdRenderedVisible(settings)}
+  {#if settings && isWidgetOverlayWidgetVisible("fleetMotd", settings)}
     <WidgetWrapper
       title="Fleet MOTD"
       shellAriaLabel="Fleet MOTD widget"
@@ -378,7 +268,7 @@
       {/snippet}
     </WidgetWrapper>
   {/if}
-  {#if settings && mumbleLinksRenderedVisible(settings)}
+  {#if settings && isWidgetOverlayWidgetVisible("mumbleLinks", settings)}
     <MumbleLinksWidget
       bind:frame={settings!.layout.mumbleLinks}
       bind:pinned={settings!.mumbleLinksAlwaysDisplayed}
@@ -387,7 +277,7 @@
       onPinnedPersist={persistOverlaySettings}
     />
   {/if}
-  {#if settings && intelFeedRenderedVisible(settings)}
+  {#if settings && isWidgetOverlayWidgetVisible("intelFeed", settings)}
     <WidgetWrapper
       title="Intel Feed"
       shellAriaLabel="Intel feed widget"

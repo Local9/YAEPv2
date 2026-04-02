@@ -611,6 +611,10 @@ pub(crate) fn open_mumble_link_internal(state: &AppState, link_id: i64) -> Resul
     Ok(())
 }
 
+fn emit_mumble_tree_changed(app: &AppHandle) {
+    let _ = app.emit("mumble-tree-changed", ());
+}
+
 #[tauri::command]
 fn open_mumble_link(state: State<'_, AppState>, link_id: i64) -> Result<(), String> {
     open_mumble_link_internal(&state, link_id)
@@ -646,14 +650,17 @@ struct CreateMumbleFolderPayload {
 #[tauri::command]
 fn create_mumble_folder(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     payload: CreateMumbleFolderPayload,
 ) -> Result<i64, String> {
-    state.db.create_mumble_folder(
+    let id = state.db.create_mumble_folder(
         payload.server_group_id,
         payload.parent_folder_id,
         payload.name,
         payload.display_order,
-    )
+    )?;
+    emit_mumble_tree_changed(&app_handle);
+    Ok(id)
 }
 
 #[derive(Debug, Deserialize)]
@@ -667,17 +674,25 @@ struct UpdateMumbleFolderPayload {
 #[tauri::command]
 fn update_mumble_folder(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     payload: UpdateMumbleFolderPayload,
 ) -> Result<(), String> {
     state
         .db
-        .update_mumble_folder(payload.folder_id, payload.name, payload.display_order)
+        .update_mumble_folder(payload.folder_id, payload.name, payload.display_order)?;
+    emit_mumble_tree_changed(&app_handle);
+    Ok(())
 }
 
 #[tauri::command]
-fn delete_mumble_folder(state: State<'_, AppState>, folder_id: i64) -> Result<(), String> {
+fn delete_mumble_folder(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    folder_id: i64,
+) -> Result<(), String> {
     state.db.delete_mumble_folder(folder_id)?;
     refresh_global_hotkeys();
+    emit_mumble_tree_changed(&app_handle);
     Ok(())
 }
 
@@ -693,7 +708,11 @@ struct CreateMumbleLinkPayload {
 }
 
 #[tauri::command]
-fn create_mumble_link(state: State<'_, AppState>, payload: CreateMumbleLinkPayload) -> Result<(), String> {
+fn create_mumble_link(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    payload: CreateMumbleLinkPayload,
+) -> Result<(), String> {
     let normalized_hotkey = state.hotkeys.validate_hotkey(&payload.hotkey)?;
     state.db.create_mumble_link(
         payload.name,
@@ -704,6 +723,7 @@ fn create_mumble_link(state: State<'_, AppState>, payload: CreateMumbleLinkPaylo
         payload.folder_id,
     )?;
     refresh_global_hotkeys();
+    emit_mumble_tree_changed(&app_handle);
     Ok(())
 }
 
@@ -720,7 +740,11 @@ struct UpdateMumbleLinkPayload {
 }
 
 #[tauri::command]
-fn update_mumble_link(state: State<'_, AppState>, payload: UpdateMumbleLinkPayload) -> Result<(), String> {
+fn update_mumble_link(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    payload: UpdateMumbleLinkPayload,
+) -> Result<(), String> {
     let normalized_hotkey = state.hotkeys.validate_hotkey(&payload.hotkey)?;
     state.db.update_mumble_link(
         payload.link_id,
@@ -732,24 +756,32 @@ fn update_mumble_link(state: State<'_, AppState>, payload: UpdateMumbleLinkPaylo
         payload.folder_id,
     )?;
     refresh_global_hotkeys();
+    emit_mumble_tree_changed(&app_handle);
     Ok(())
 }
 
 #[tauri::command]
 fn set_mumble_link_selected(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     link_id: i64,
     is_selected: bool,
 ) -> Result<(), String> {
     state.db.set_mumble_link_selected(link_id, is_selected)?;
     refresh_global_hotkeys();
+    emit_mumble_tree_changed(&app_handle);
     Ok(())
 }
 
 #[tauri::command]
-fn delete_mumble_link(state: State<'_, AppState>, link_id: i64) -> Result<(), String> {
+fn delete_mumble_link(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    link_id: i64,
+) -> Result<(), String> {
     state.db.delete_mumble_link(link_id)?;
     refresh_global_hotkeys();
+    emit_mumble_tree_changed(&app_handle);
     Ok(())
 }
 
@@ -761,27 +793,40 @@ fn get_mumble_server_groups(state: State<'_, AppState>) -> Result<Vec<MumbleServ
 #[tauri::command]
 fn create_mumble_server_group(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     name: String,
     display_order: i64,
 ) -> Result<(), String> {
-    state.db.create_mumble_server_group(name, display_order)
+    state.db.create_mumble_server_group(name, display_order)?;
+    emit_mumble_tree_changed(&app_handle);
+    Ok(())
 }
 
 #[tauri::command]
 fn update_mumble_server_group(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     group_id: i64,
     name: String,
     display_order: i64,
 ) -> Result<(), String> {
     state
         .db
-        .update_mumble_server_group(group_id, name, display_order)
+        .update_mumble_server_group(group_id, name, display_order)?;
+    emit_mumble_tree_changed(&app_handle);
+    Ok(())
 }
 
 #[tauri::command]
-fn delete_mumble_server_group(state: State<'_, AppState>, group_id: i64) -> Result<(), String> {
-    state.db.delete_mumble_server_group(group_id)
+fn delete_mumble_server_group(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    group_id: i64,
+) -> Result<(), String> {
+    state.db.delete_mumble_server_group(group_id)?;
+    refresh_global_hotkeys();
+    emit_mumble_tree_changed(&app_handle);
+    Ok(())
 }
 
 #[tauri::command]

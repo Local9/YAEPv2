@@ -1,12 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { backend } from "$services/backend";
   import type { MumbleFolder, MumbleLink, MumbleTreeSnapshot } from "$models/domain";
-  import WidgetWrapper from "$lib/components/widget-overlay/widget-wrapper.svelte";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import { Button } from "$lib/components/ui/button";
+  import { formatMumbleServerGroupDisplayName } from "$lib/utils/mumble-display";
+  import * as Menubar from "$lib/components/ui/menubar";
+  import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
   import HeadphonesIcon from "@lucide/svelte/icons/headphones";
+  import PinIcon from "@lucide/svelte/icons/pin";
 
   type WidgetFrameModel = { x: number; y: number; width: number; height: number } & Record<string, unknown>;
 
@@ -24,8 +26,14 @@
     onPinnedPersist?: () => void | Promise<void>;
   } = $props();
 
+  const MIN_SHELL_WIDTH = 96;
+  const COMPACT_SHELL_HEIGHT = 30;
+
   let tree = $state<MumbleTreeSnapshot | null>(null);
-  let menuOpen = $state(false);
+  /** Which menubar menu is open (bits-ui menubar `value`). */
+  let menubarValue = $state("");
+  let drag = $state<{ dx: number; dy: number } | null>(null);
+  let resizeWidth = $state<{ startX: number; startW: number } | null>(null);
 
   async function loadTree() {
     try {
@@ -36,18 +44,27 @@
   }
 
   $effect(() => {
-    if (menuOpen) void loadTree();
+    if (menubarValue) void loadTree();
   });
 
   onMount(() => {
     void loadTree();
-    let u: UnlistenFn | undefined;
+    let u1: UnlistenFn | undefined;
+    let u2: UnlistenFn | undefined;
     void listen("widget-overlay-settings-changed", () => {
       void loadTree();
     }).then((fn) => {
-      u = fn;
+      u1 = fn;
     });
-    return () => u?.();
+    void listen("mumble-tree-changed", () => {
+      void loadTree();
+    }).then((fn) => {
+      u2 = fn;
+    });
+    return () => {
+      u1?.();
+      u2?.();
+    };
   });
 
   const sortedGroups = $derived(
@@ -55,6 +72,8 @@
       ? [...tree.groups].sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name))
       : []
   );
+
+  const multipleServerGroups = $derived(sortedGroups.length > 1);
 
   function foldersForParent(gid: number, parentId: number | null): MumbleFolder[] {
     if (!tree) return [];
@@ -73,70 +92,389 @@
   function openLink(linkId: number) {
     void backend.openMumbleLink(linkId);
   }
+
+  /** Widget shows at most one subfolder level; deeper DB folders are omitted here. */
+  function nestedSubfoldersIgnored(gid: number, subfolderId: number): boolean {
+    return foldersForParent(gid, subfolderId).length > 0;
+  }
+
+  function onPointerMove(e: PointerEvent) {
+    if (!drag) return;
+    const nx = e.clientX - drag.dx;
+    const ny = e.clientY - drag.dy;
+    frame = { ...frame, x: nx, y: ny };
+  }
+
+  async function endDrag() {
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", endDrag);
+    window.removeEventListener("pointercancel", endDrag);
+    drag = null;
+    try {
+      await invoke("widget_overlay_set_dragging", { dragging: false });
+    } catch {
+      /* dev */
+    }
+    await onPersist();
+  }
+
+  function onGripPointerDown(e: PointerEvent) {
+    e.preventDefault();
+    drag = {
+      dx: e.clientX - frame.x,
+      dy: e.clientY - frame.y
+    };
+    void invoke("widget_overlay_set_dragging", { dragging: true }).catch(() => {});
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
+  }
+
+  function onResizeWidthMove(e: PointerEvent) {
+    if (!resizeWidth) return;
+    const nw = resizeWidth.startW + (e.clientX - resizeWidth.startX);
+    const maxW = Math.max(MIN_SHELL_WIDTH, window.innerWidth - frame.x - 8);
+    frame = {
+      ...frame,
+      width: Math.min(Math.max(MIN_SHELL_WIDTH, nw), maxW),
+      height: COMPACT_SHELL_HEIGHT
+    };
+  }
+
+  async function endResizeWidth() {
+    window.removeEventListener("pointermove", onResizeWidthMove);
+    window.removeEventListener("pointerup", endResizeWidth);
+    window.removeEventListener("pointercancel", endResizeWidth);
+    resizeWidth = null;
+    try {
+      await invoke("widget_overlay_set_dragging", { dragging: false });
+    } catch {
+      /* dev */
+    }
+    frame = { ...frame, height: COMPACT_SHELL_HEIGHT };
+    await onPersist();
+  }
+
+  function onResizeWidthPointerDown(e: PointerEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeWidth = {
+      startX: e.clientX,
+      startW: frame.width
+    };
+    void invoke("widget_overlay_set_dragging", { dragging: true }).catch(() => {});
+    window.addEventListener("pointermove", onResizeWidthMove);
+    window.addEventListener("pointerup", endResizeWidth);
+    window.addEventListener("pointercancel", endResizeWidth);
+  }
+
+  function stopDragChain(e: PointerEvent) {
+    e.stopPropagation();
+  }
+
+  async function togglePinned(e: MouseEvent) {
+    e.stopPropagation();
+    pinned = !pinned;
+    const run = onPinnedPersist ?? onPersist;
+    await run();
+  }
 </script>
 
-{#snippet folderBranch(folder: MumbleFolder)}
-  {@const linksHere = linksForFolder(folder.serverGroupId, folder.id)}
-  {@const subfolders = foldersForParent(folder.serverGroupId, folder.id)}
-  <DropdownMenu.Sub>
-    <DropdownMenu.SubTrigger class="cursor-default">{folder.name}</DropdownMenu.SubTrigger>
-    <DropdownMenu.SubContent class="max-h-72 overflow-y-auto">
-      {#each linksHere as link (link.id)}
-        <DropdownMenu.Item onclick={() => openLink(link.id)}>{link.name}</DropdownMenu.Item>
+{#snippet subfolderLinksOnly(gid: number, subfolder: MumbleFolder)}
+  <Menubar.Sub>
+    <Menubar.SubTrigger class="cursor-default">{subfolder.name}</Menubar.SubTrigger>
+    <Menubar.SubContent class="max-h-[min(18rem,85dvh)] overflow-y-auto overflow-x-hidden p-1" interactOutsideBehavior="ignore">
+      {#each linksForFolder(gid, subfolder.id) as link (link.id)}
+        <Menubar.Item onclick={() => openLink(link.id)}>{link.name}</Menubar.Item>
       {/each}
-      {#each subfolders as sub (sub.id)}
-        {@render folderBranch(sub)}
-      {/each}
-      {#if linksHere.length === 0 && subfolders.length === 0}
-        <DropdownMenu.Item disabled>Empty folder</DropdownMenu.Item>
+      {#if linksForFolder(gid, subfolder.id).length === 0}
+        <Menubar.Item disabled>Empty folder</Menubar.Item>
       {/if}
-    </DropdownMenu.SubContent>
-  </DropdownMenu.Sub>
+      {#if nestedSubfoldersIgnored(gid, subfolder.id)}
+        <Menubar.Item disabled>Nested folders: edit on Mumble Links page</Menubar.Item>
+      {/if}
+    </Menubar.SubContent>
+  </Menubar.Sub>
 {/snippet}
 
-<WidgetWrapper
-  title="Mumble"
-  shellAriaLabel="Mumble links widget"
-  bind:frame
-  bind:pinned
-  bind:rootEl
-  {onPersist}
-  onPinnedPersist={onPinnedPersist ?? onPersist}
-  minWidth={160}
-  minHeight={72}
+{#snippet rootFolderMenu(group: { id: number; name: string }, folder: MumbleFolder)}
+  {@const rootLinks = linksForFolder(group.id, folder.id)}
+  {@const childFolders = foldersForParent(group.id, folder.id)}
+  <Menubar.Menu value="mumble-g{group.id}-f{folder.id}">
+    <Menubar.Trigger
+      class="border-input bg-secondary text-secondary-foreground hover:bg-muted aria-expanded:bg-muted mumble-folder-trigger max-w-full min-w-0 gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-xs"
+      aria-label="Mumble folder {folder.name}"
+    >
+      <HeadphonesIcon class="size-3.5 shrink-0" aria-hidden="true" />
+      <span class="truncate">
+        {#if multipleServerGroups}
+          {formatMumbleServerGroupDisplayName(group.name)} / {folder.name}
+        {:else}
+          {folder.name}
+        {/if}
+      </span>
+    </Menubar.Trigger>
+    <Menubar.Content
+      class="max-h-96 w-56 overflow-visible p-0"
+      align="start"
+      side="bottom"
+      interactOutsideBehavior="ignore"
+    >
+      <div class="max-h-96 overflow-y-auto overflow-x-hidden px-1 py-1">
+        {#each rootLinks as link (link.id)}
+          <Menubar.Item onclick={() => openLink(link.id)}>{link.name}</Menubar.Item>
+        {/each}
+        {#if rootLinks.length === 0 && childFolders.length === 0}
+          <Menubar.Item disabled>Empty folder</Menubar.Item>
+        {/if}
+      </div>
+      {#each childFolders as sub (sub.id)}
+        {@render subfolderLinksOnly(group.id, sub)}
+      {/each}
+    </Menubar.Content>
+  </Menubar.Menu>
+{/snippet}
+
+{#snippet rootLinksOnlyMenu(group: { id: number; name: string })}
+  {@const rootLinks = linksForFolder(group.id, null)}
+  <Menubar.Menu value="mumble-g{group.id}-root">
+    <Menubar.Trigger
+      class="border-input bg-secondary text-secondary-foreground hover:bg-muted aria-expanded:bg-muted mumble-folder-trigger max-w-full min-w-0 gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-xs"
+      aria-label="Mumble links for {formatMumbleServerGroupDisplayName(group.name)}"
+    >
+      <HeadphonesIcon class="size-3.5 shrink-0" aria-hidden="true" />
+      <span class="truncate">{formatMumbleServerGroupDisplayName(group.name)}</span>
+    </Menubar.Trigger>
+    <Menubar.Content
+      class="max-h-96 w-56 overflow-visible p-0"
+      align="start"
+      side="bottom"
+      interactOutsideBehavior="ignore"
+    >
+      <div class="max-h-96 overflow-y-auto overflow-x-hidden px-1 py-1">
+        {#each rootLinks as link (link.id)}
+          <Menubar.Item onclick={() => openLink(link.id)}>{link.name}</Menubar.Item>
+        {/each}
+      </div>
+    </Menubar.Content>
+  </Menubar.Menu>
+{/snippet}
+
+<div
+  bind:this={rootEl}
+  class="mumble-chip-shell touch-none select-none"
+  style:left="{frame.x}px"
+  style:top="{frame.y}px"
+  style:width="{Math.max(MIN_SHELL_WIDTH, frame.width)}px"
+  style:height="{Math.max(COMPACT_SHELL_HEIGHT, frame.height)}px"
+  role="application"
+  aria-label="Mumble links"
 >
-  {#snippet children()}
-    <div class="flex flex-col gap-2 p-2">
-      <DropdownMenu.Root bind:open={menuOpen}>
-        <DropdownMenu.Trigger>
-          <Button variant="secondary" class="h-9 w-full gap-2 text-sm" type="button">
-            <HeadphonesIcon class="size-4 shrink-0" aria-hidden="true" />
-            Links
-          </Button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content class="max-h-96 w-56 overflow-y-auto" align="start">
-          {#if sortedGroups.length === 0}
-            <DropdownMenu.Item disabled>No servers configured</DropdownMenu.Item>
-          {:else}
-            {#each sortedGroups as group (group.id)}
-              <DropdownMenu.Sub>
-                <DropdownMenu.SubTrigger class="cursor-default">{group.name}</DropdownMenu.SubTrigger>
-                <DropdownMenu.SubContent class="max-h-72 overflow-y-auto">
-                  {#each linksForFolder(group.id, null) as link (link.id)}
-                    <DropdownMenu.Item onclick={() => openLink(link.id)}>{link.name}</DropdownMenu.Item>
-                  {/each}
-                  {#each foldersForParent(group.id, null) as folder (folder.id)}
-                    {@render folderBranch(folder)}
-                  {/each}
-                  {#if linksForFolder(group.id, null).length === 0 && foldersForParent(group.id, null).length === 0}
-                    <DropdownMenu.Item disabled>Empty server</DropdownMenu.Item>
-                  {/if}
-                </DropdownMenu.SubContent>
-              </DropdownMenu.Sub>
-            {/each}
-          {/if}
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
+  <div class="mumble-chip-row">
+    <div
+      class="mumble-chip-grip"
+      role="presentation"
+      title="Drag to move"
+      onpointerdown={onGripPointerDown}
+    >
+      <GripVerticalIcon class="mumble-chip-grip-icon" aria-hidden="true" />
     </div>
-  {/snippet}
-</WidgetWrapper>
+
+    <div class="mumble-chip-menu flex min-w-0 flex-1">
+      <Menubar.Root bind:value={menubarValue} loop>
+        {#if sortedGroups.length === 0}
+          <Menubar.Menu value="mumble-empty">
+            <Menubar.Trigger
+              class="text-muted-foreground mumble-folder-trigger max-w-full min-w-0 gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium"
+              disabled
+            >
+              <HeadphonesIcon class="size-3.5 shrink-0" aria-hidden="true" />
+              <span class="truncate">Mumble</span>
+            </Menubar.Trigger>
+          </Menubar.Menu>
+        {:else}
+          {#each sortedGroups as group (group.id)}
+            {@const rootFolders = foldersForParent(group.id, null)}
+            {@const rootLinks = linksForFolder(group.id, null)}
+            {#if rootFolders.length > 0}
+              {#each rootFolders as folder (folder.id)}
+                {@render rootFolderMenu(group, folder)}
+              {/each}
+            {:else if rootLinks.length > 0}
+              {@render rootLinksOnlyMenu(group)}
+            {:else}
+              <Menubar.Menu value="mumble-g{group.id}-empty">
+                <Menubar.Trigger
+                  class="text-muted-foreground mumble-folder-trigger max-w-full min-w-0 gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium"
+                  disabled
+                >
+                  <HeadphonesIcon class="size-3.5 shrink-0" aria-hidden="true" />
+                  <span class="truncate">{formatMumbleServerGroupDisplayName(group.name)}</span>
+                </Menubar.Trigger>
+              </Menubar.Menu>
+            {/if}
+          {/each}
+        {/if}
+      </Menubar.Root>
+    </div>
+
+    <button
+      type="button"
+      class="mumble-chip-pin"
+      title={pinned ? "Unpin widget (hide when widgets are toggled off)" : "Pin widget (stay visible when widgets are toggled off)"}
+      aria-label={pinned ? "Unpin widget" : "Pin widget"}
+      aria-pressed={pinned}
+      onclick={togglePinned}
+      onpointerdown={stopDragChain}
+    >
+      <PinIcon class="mumble-chip-pin-icon" strokeWidth={pinned ? 2.25 : 1.75} />
+    </button>
+
+    <button
+      type="button"
+      class="mumble-chip-resize-x"
+      title="Drag to resize width"
+      aria-label="Resize Mumble widget width"
+      onpointerdown={onResizeWidthPointerDown}
+    ></button>
+  </div>
+</div>
+
+<style>
+  .mumble-chip-shell {
+    position: absolute;
+    z-index: 0;
+    box-sizing: border-box;
+    pointer-events: auto;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--card-foreground);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-shadow:
+      0 1px 2px oklch(0 0 0 / 0.12),
+      0 6px 18px oklch(0 0 0 / 0.18);
+  }
+
+  .mumble-chip-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 2px 2px 4px;
+    box-sizing: border-box;
+    min-height: 0;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mumble-chip-grip {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 22px;
+    border-radius: 4px;
+    color: var(--muted-foreground);
+    cursor: grab;
+    user-select: none;
+  }
+
+  .mumble-chip-grip:active {
+    cursor: grabbing;
+  }
+
+  .mumble-chip-grip :global(.mumble-chip-grip-icon) {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+
+  .mumble-chip-menu :global(.mumble-folder-trigger) {
+    min-height: 1.5rem;
+    line-height: 1.2;
+  }
+
+  /* Flatten default menubar chrome; one menu per root folder (or per-server fallback). */
+  .mumble-chip-menu :global([data-slot="menubar"]) {
+    height: auto;
+    min-height: 0;
+    min-width: 0;
+    max-width: 100%;
+    flex: 1;
+    align-items: center;
+    gap: 3px;
+    border: none;
+    background: transparent;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .mumble-chip-menu :global([data-slot="menubar-trigger"]) {
+    max-width: 100%;
+  }
+
+  .mumble-chip-resize-x {
+    flex-shrink: 0;
+    width: 6px;
+    align-self: stretch;
+    margin: 2px 0;
+    margin-right: 2px;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in oklch, var(--muted-foreground) 35%, transparent) 35%,
+      color-mix(in oklch, var(--muted-foreground) 35%, transparent) 65%,
+      transparent 100%
+    );
+    cursor: ew-resize;
+    touch-action: none;
+  }
+
+  .mumble-chip-resize-x:hover,
+  .mumble-chip-resize-x:focus-visible {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in oklch, var(--primary) 50%, transparent) 40%,
+      color-mix(in oklch, var(--primary) 50%, transparent) 60%,
+      transparent 100%
+    );
+    outline: none;
+  }
+
+  .mumble-chip-pin {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--background);
+    color: var(--muted-foreground);
+    cursor: pointer;
+  }
+
+  .mumble-chip-pin:hover {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+
+  .mumble-chip-pin[aria-pressed="true"] {
+    color: var(--primary);
+    border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
+    background: color-mix(in oklch, var(--primary) 12%, var(--background));
+  }
+
+  .mumble-chip-pin :global(.mumble-chip-pin-icon) {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+</style>

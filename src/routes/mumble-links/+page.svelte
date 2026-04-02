@@ -3,6 +3,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { backend } from "$services/backend";
   import type { MumbleFolder, MumbleLink, MumbleTreeSnapshot } from "$models/domain";
+  import { formatMumbleServerGroupDisplayName } from "$lib/utils/mumble-display";
   import { deriveMumbleLinkName, isAllowedMumbleLinkUrl } from "$lib/utils/mumble-url";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -522,7 +523,9 @@
                 class="size-4 shrink-0 transition-transform [[data-state=open]_&]:rotate-180"
               />
               {#if multipleServerGroups}
-                <span class="text-foreground min-w-0 flex-1 font-medium">{group.name}</span>
+                <span class="text-foreground min-w-0 flex-1 font-medium"
+                  >{formatMumbleServerGroupDisplayName(group.name)}</span
+                >
               {:else}
                 <span class="min-w-0 flex-1"></span>
               {/if}

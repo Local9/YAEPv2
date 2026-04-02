@@ -29,11 +29,8 @@
     TableHeader,
     TableRow
   } from "$lib/components/ui/table";
-  import {
-    DEFAULT_BROWSER_QUICK_LINKS,
-    type MonitorInfoDto,
-    type WidgetOverlaySettings
-  } from "$models/domain";
+  import { type MonitorInfoDto, type WidgetOverlaySettings } from "$models/domain";
+  import { mergeWidgetOverlaySettings } from "$services/widgets";
 
   const WIDGET_OVERLAY_TOGGLE_CAPTURE = "widgetOverlayToggle";
   const WIDGET_HOTKEY_INPUT_CLASS = "min-w-[10rem] cursor-pointer select-none";
@@ -96,39 +93,6 @@
     return "Unable to save widget overlay settings right now. Please try again.";
   }
 
-  function normalizeLoadedSettings(loaded: WidgetOverlaySettings): WidgetOverlaySettings {
-    const browserQuickLinks =
-      Array.isArray(loaded.browserQuickLinks) && loaded.browserQuickLinks.length > 0
-        ? loaded.browserQuickLinks.map((l) => ({
-            id: l.id,
-            url: l.url,
-            title: l.title
-          }))
-        : [...DEFAULT_BROWSER_QUICK_LINKS];
-    const browserDefaultUrl =
-      loaded.browserDefaultUrl != null && String(loaded.browserDefaultUrl).trim()
-        ? String(loaded.browserDefaultUrl).trim()
-        : null;
-    return {
-      ...loaded,
-      browserQuickLinks,
-      browserDefaultUrl,
-      widgetsSuppressed: loaded.widgetsSuppressed ?? false,
-      browserAlwaysDisplayed: loaded.browserAlwaysDisplayed ?? false,
-      showFleetMotdWidget: loaded.showFleetMotdWidget ?? true,
-      showIntelFeedWidget: loaded.showIntelFeedWidget ?? true,
-      showMumbleLinksWidget: loaded.showMumbleLinksWidget ?? true,
-      fleetMotdAlwaysDisplayed: loaded.fleetMotdAlwaysDisplayed ?? false,
-      intelFeedAlwaysDisplayed: loaded.intelFeedAlwaysDisplayed ?? false,
-      mumbleLinksAlwaysDisplayed: loaded.mumbleLinksAlwaysDisplayed ?? false,
-      toggleHotkey: loaded.toggleHotkey ?? "",
-      layout: {
-        ...loaded.layout,
-        mumbleLinks: loaded.layout.mumbleLinks ?? { x: 24, y: 520, width: 200, height: 88 }
-      }
-    };
-  }
-
   function isEscapeHotkeyValue(rawHotkey: string): boolean {
     const tokens = rawHotkey
       .split("+")
@@ -160,7 +124,7 @@
     try {
       monitors = await backend.listMonitors();
       const raw = await backend.widgetOverlayGetSettings();
-      settings = normalizeLoadedSettings(raw);
+      settings = mergeWidgetOverlaySettings(raw);
       if (settings) {
         monitorPicker = String(settings.monitorIndex);
         browserDefaultPicker = settings.browserDefaultUrl ?? "";
