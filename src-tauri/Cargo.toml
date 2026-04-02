@@ -4,6 +4,10 @@ version = "0.1.1"
 description = "YAEP rebuild in Tauri + SvelteKit"
 edition = "2021"
 
+[[bin]]
+name = "yaep"
+path = "src/main.rs"
+
 [lib]
 name = "yaep_rust_lib"
 # rlib only for the Tauri binary: avoids a separate cdylib with duplicate statics (hooks, CAPTURE).
