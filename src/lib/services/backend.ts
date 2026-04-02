@@ -252,8 +252,8 @@ export const backend = {
       targetProfileName
     });
   },
-  eveBackupAllProfiles(outputPath: string): Promise<void> {
-    return invoke("eve_backup_all_profiles", { outputPath });
+  eveBackupAllProfiles(serverName: string, outputPath: string): Promise<void> {
+    return invoke("eve_backup_all_profiles", { serverName, outputPath });
   },
   eveFetchCharacterName(characterId: number): Promise<string> {
     return invoke("eve_fetch_character_name", { characterId });

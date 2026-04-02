@@ -36,6 +36,7 @@
   let isSubmittingCopy = $state(false);
   let isSubmittingDelete = $state(false);
   let isSubmittingCopySettings = $state(false);
+  let isSubmittingBackup = $state(false);
 
   let copyDialogOpen = $state(false);
   let copyDialogProfile = $state<EveDetectedProfile | null>(null);
@@ -123,6 +124,26 @@
       label: item.userId,
     })),
   );
+
+  function sanitizeFileNameSegment(value: string): string {
+    return value
+      .trim()
+      // Windows-invalid filename characters.
+      .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_");
+  }
+
+  function formatYyyyMmDd(date: Date): string {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${yyyy}${mm}${dd}`;
+  }
+
+  function splitDirAndFile(path: string): { dir: string; file: string } {
+    const lastSlash = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+    if (lastSlash < 0) return { dir: "", file: path };
+    return { dir: path.slice(0, lastSlash), file: path.slice(lastSlash + 1) };
+  }
 
   async function refresh() {
     const detected = await backend.eveProfilesDetected();
@@ -265,6 +286,53 @@
     }
   }
 
+  async function backupAllProfiles() {
+    try {
+      isSubmittingBackup = true;
+      status = "";
+      error = "";
+
+      // Lazy import to avoid SSR-time issues with Tauri APIs.
+      const { save } = await import("@tauri-apps/plugin-dialog");
+
+      const filePath = await save({
+        title: "Save EVE profiles backup",
+        filters: [
+          {
+            name: "EVE profiles backup",
+            extensions: ["zip"],
+          },
+        ],
+      });
+
+      if (!filePath) return; // user cancelled
+
+      if (!selectedServer) {
+        throw new Error("Select a server before backing up");
+      }
+
+      const { dir } = splitDirAndFile(filePath);
+      if (!dir) {
+        throw new Error("Invalid backup destination selected");
+      }
+
+      const dateStr = formatYyyyMmDd(new Date());
+      const sanitizedServer = sanitizeFileNameSegment(selectedServer);
+      const formattedFileName = `${sanitizedServer}_eveProfiles_${dateStr}.zip`;
+      const separator = dir.includes("\\") ? "\\" : "/";
+      const outputPath = `${dir}${separator}${formattedFileName}`;
+
+      await backend.eveBackupAllProfiles(selectedServer, outputPath);
+
+      status = `EVE profiles backed up: ${normalizeServerName(selectedServer)}`;
+      error = "";
+    } catch (e) {
+      error = String(e);
+    } finally {
+      isSubmittingBackup = false;
+    }
+  }
+
   onMount(refresh);
 
   $effect(() => {
@@ -294,7 +362,8 @@
       <FolderOpenIcon class="size-4 shrink-0" aria-hidden="true" />
       <h3 class="text-base font-semibold text-foreground">Detected Profiles</h3>
     </div>
-    <div class="mt-3 max-w-sm">
+    <div class="mt-3 flex flex-wrap items-end gap-2">
+      <div class="max-w-sm flex-1">
       <Field>
         <FieldLabel class="text-muted-foreground">Server</FieldLabel>
         <FieldContent>
@@ -312,6 +381,14 @@
           </Select.Root>
         </FieldContent>
       </Field>
+      </div>
+      <Button
+        type="button"
+        onclick={() => void backupAllProfiles()}
+        disabled={!selectedServer || isSubmittingBackup}
+      >
+        {isSubmittingBackup ? "Backing up..." : "Back up"}
+      </Button>
     </div>
 
     <div class="mt-3 overflow-x-auto">

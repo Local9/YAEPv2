@@ -930,10 +930,14 @@ fn eve_copy_character_files_on_server(
 }
 
 #[tauri::command]
-fn eve_backup_all_profiles(state: State<'_, AppState>, output_path: String) -> Result<(), String> {
+fn eve_backup_all_profiles(
+    state: State<'_, AppState>,
+    server_name: String,
+    output_path: String,
+) -> Result<(), String> {
     state
         .eve_tools
-        .backup_all_profiles(output_path)
+        .backup_all_profiles(server_name, output_path)
         .map_err(|e| sanitize_error("eve_backup_all_profiles", e))
 }
 

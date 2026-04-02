@@ -226,7 +226,7 @@ impl EveProfileToolsService {
         Ok(())
     }
 
-    pub fn backup_all_profiles(&self, output_path: String) -> Result<(), String> {
+    pub fn backup_all_profiles(&self, server_name: String, output_path: String) -> Result<(), String> {
         self.ensure_eve_not_running()?;
         let base = self.eve_local_base_dir()?;
         if !base.exists() {
@@ -234,21 +234,24 @@ impl EveProfileToolsService {
         }
         let output = self.validate_backup_output_path(&output_path, &base)?;
 
+        let server = server_name.trim();
+        if server.is_empty() {
+            return Err("Server name is required".to_string());
+        }
+        let server_dir = base.join(server);
+        if !server_dir.exists() || !server_dir.is_dir() {
+            return Err("Server folder not found".to_string());
+        }
+
         let mut profile_dirs: Vec<PathBuf> = Vec::new();
-        for server_dir in fs::read_dir(&base).map_err(|e| e.to_string())? {
-            let server_dir = server_dir.map_err(|e| e.to_string())?;
-            if !server_dir.path().is_dir() {
+        for entry in fs::read_dir(server_dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.path().is_dir() {
                 continue;
             }
-            for entry in fs::read_dir(server_dir.path()).map_err(|e| e.to_string())? {
-                let entry = entry.map_err(|e| e.to_string())?;
-                if !entry.path().is_dir() {
-                    continue;
-                }
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.eq_ignore_ascii_case("Default") || name.starts_with("settings_") {
-                    profile_dirs.push(entry.path());
-                }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.eq_ignore_ascii_case("Default") || name.starts_with("settings_") {
+                profile_dirs.push(entry.path());
             }
         }
 
