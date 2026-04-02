@@ -259,7 +259,6 @@ fn refresh_runtime_thumbnails(
     let candidates = windows.enumerate_windows();
     let filtered = filter_windows(candidates, sys, &target_processes);
 
-    let mut state = runtime.lock().expect("thumbnail runtime lock poisoned");
     let new_by_pid: HashMap<u32, RuntimeThumbnail> = filtered
         .into_iter()
         .map(|window| {
@@ -273,13 +272,24 @@ fn refresh_runtime_thumbnails(
         })
         .collect();
 
+    // Snapshot under lock, then release before DWM calls. DWM uses `run_on_main` and blocks until
+    // the GUI thread runs; holding `runtime` here deadlocks if `ThumbnailService::stop()` runs on
+    // that thread (e.g. settings import after the file dialog).
+    let (previous_by_pid, previous_focused) = {
+        let state = runtime.lock().expect("thumbnail runtime lock poisoned");
+        (
+            state.thumbnails_by_pid.clone(),
+            state.focused_pid,
+        )
+    };
+
     let mut new_pids: Vec<u32> = new_by_pid.keys().copied().collect();
     new_pids.sort_unstable();
     for pid in new_pids {
         let Some(thumb) = new_by_pid.get(&pid) else {
             continue;
         };
-        if !state.thumbnails_by_pid.contains_key(&pid) {
+        if !previous_by_pid.contains_key(&pid) {
             let _ = app_handle.emit(
                 "thumbnailAdded",
                 ThumbnailEvent {
@@ -301,7 +311,7 @@ fn refresh_runtime_thumbnails(
             continue;
         }
 
-        if let Some(previous) = state.thumbnails_by_pid.get(&pid) {
+        if let Some(previous) = previous_by_pid.get(&pid) {
             let title_changed = previous.title != thumb.title;
             let hwnd_changed = previous.hwnd != thumb.hwnd;
             if title_changed || hwnd_changed {
@@ -325,14 +335,14 @@ fn refresh_runtime_thumbnails(
         }
     }
 
-    let removed: Vec<u32> = state
-        .thumbnails_by_pid
+    let removed: Vec<u32> = previous_by_pid
         .keys()
         .copied()
         .filter(|pid| !new_by_pid.contains_key(pid))
         .collect();
+    let mut cleared_focus = false;
     for pid in removed {
-        if let Some(old) = state.thumbnails_by_pid.get(&pid) {
+        if let Some(old) = previous_by_pid.get(&pid) {
             let _ = app_handle.emit(
                 "thumbnailRemoved",
                 ThumbnailEvent {
@@ -342,8 +352,7 @@ fn refresh_runtime_thumbnails(
             );
         }
         dwm.unregister_runtime_thumbnail(pid);
-        if state.focused_pid == Some(pid) {
-            state.focused_pid = None;
+        if previous_focused == Some(pid) {
             dwm.set_focused_thumbnail(None);
             let _ = app_handle.emit(
                 "focusChanged",
@@ -352,10 +361,15 @@ fn refresh_runtime_thumbnails(
                     window_title: None,
                 },
             );
+            cleared_focus = true;
         }
     }
 
+    let mut state = runtime.lock().expect("thumbnail runtime lock poisoned");
     state.thumbnails_by_pid = new_by_pid;
+    if cleared_focus {
+        state.focused_pid = None;
+    }
     drop(state);
     dwm.ensure_missing_runtime_overlays(OVERLAY_CREATION_PER_CYCLE);
 }
@@ -367,20 +381,35 @@ fn refresh_focus_state(
     dwm: &Arc<DwmService>,
 ) {
     let foreground_pid = windows.foreground_window_pid();
-    let mut state = runtime.lock().expect("thumbnail runtime lock poisoned");
     let Some(pid) = foreground_pid else {
         return;
     };
-    let Some(window) = state.thumbnails_by_pid.get(&pid) else {
-        // QoL: keep last focused state when user focuses non-thumbnail windows.
-        return;
+    let (window_title, previous_focused) = {
+        let state = runtime.lock().expect("thumbnail runtime lock poisoned");
+        let Some(window) = state.thumbnails_by_pid.get(&pid) else {
+            // QoL: keep last focused state when user focuses non-thumbnail windows.
+            return;
+        };
+        if state.focused_pid == Some(pid) {
+            return;
+        }
+        (window.title.clone(), state.focused_pid)
     };
+
+    dwm.set_focused_thumbnail(Some(pid));
+
+    let mut state = runtime.lock().expect("thumbnail runtime lock poisoned");
+    if state.thumbnails_by_pid.get(&pid).is_none() {
+        drop(state);
+        dwm.set_focused_thumbnail(previous_focused);
+        return;
+    }
     if state.focused_pid == Some(pid) {
         return;
     }
-    let window_title = window.title.clone();
     state.focused_pid = Some(pid);
-    dwm.set_focused_thumbnail(Some(pid));
+    drop(state);
+
     let _ = app_handle.emit(
         "focusChanged",
         FocusEvent {
