@@ -582,6 +582,18 @@ fn register_runtime_thumbnail_locked(
         config.width,
         config.height,
     );
+
+    // Persist immediately so ThumbnailSettings exists and new clients join the Default group
+    // (see DbService::save_thumbnail_setting). Without this, thumbnails appear before any drag/wheel
+    // save and never get ClientGroupMembers rows.
+    if let Err(e) = db.save_thumbnail_setting(
+        profile_id,
+        title.clone(),
+        entry.config.clone(),
+        None,
+    ) {
+        eprintln!("YAEP: persist thumbnail on register pid={pid}: {e}");
+    }
 }
 
 fn ensure_missing_runtime_overlays_locked(inner: &Arc<DwmInner>, max_to_create: usize) {
