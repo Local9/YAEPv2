@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount } from "svelte";
   import { backend } from "$services/backend";
   import type {
+    GridLayoutFormPrefs,
     GridLayoutPayload,
     GridLayoutPreviewItem,
     MonitorInfoDto,
@@ -34,7 +35,9 @@
   import CrosshairIcon from "@lucide/svelte/icons/crosshair";
   import MonitorIcon from "@lucide/svelte/icons/monitor";
   import PlayIcon from "@lucide/svelte/icons/play";
+  import DownloadIcon from "@lucide/svelte/icons/download";
   import {
+    buildGridLayoutFormPrefs,
     buildGridLayoutPayload,
     formatMonitorLabel,
     monitorWorkOffset as computeMonitorWorkOffset,
@@ -62,6 +65,7 @@
   let preview = $state<GridLayoutPreviewItem[]>([]);
   let status = $state("");
   let error = $state("");
+  let exportBusy = $state(false);
 
   let aspectRatioItems = $derived<{ value: string; label: string }[]>(
     ASPECT_RATIO_OPTIONS.map((r) => ({ value: r, label: r })),
@@ -101,11 +105,6 @@
     gridCellWidth = next.width;
     gridCellHeight = next.height;
   }
-
-  $effect(() => {
-    void selectedAspectRatio;
-    untrack(() => syncHeightFromWidth());
-  });
 
   let monitorTriggerLabel = $derived.by(() => {
     if (selectedMonitorIndex === "") return "All / default origin";
@@ -158,6 +157,43 @@
 
   let useAnchorOrigin = $derived(selectedAnchorTitle !== "");
 
+  function collectFormPrefs(): GridLayoutFormPrefs {
+    return buildGridLayoutFormPrefs({
+      selectedAspectRatio,
+      gridCellWidth,
+      gridCellHeight,
+      gridStartX,
+      gridStartY,
+      gridColumns,
+      onlyAffectActiveThumbnails,
+      selectedMonitorIndex,
+      selectedAnchorTitle,
+    });
+  }
+
+  function applyLoadedPrefs(prefs: GridLayoutFormPrefs) {
+    selectedAspectRatio = prefs.aspectRatio;
+    gridCellWidth = prefs.gridCellWidth;
+    gridCellHeight = prefs.gridCellHeight;
+    gridStartX = prefs.gridStartX;
+    gridStartY = prefs.gridStartY;
+    gridColumns = prefs.gridColumns;
+    onlyAffectActiveThumbnails = prefs.onlyAffectActiveThumbnails;
+    selectedMonitorIndex = prefs.selectedMonitorIndex;
+    const titles = new Set(thumbnailSettings.map((t) => t.windowTitle));
+    selectedAnchorTitle =
+      prefs.selectedAnchorTitle !== "" && titles.has(prefs.selectedAnchorTitle)
+        ? prefs.selectedAnchorTitle
+        : "";
+  }
+
+  function formatYyyyMmDd(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
   function buildPayload(): GridLayoutPayload | null {
     const { payload, error: payloadError } = buildGridLayoutPayload({
       activeProfileId,
@@ -190,6 +226,14 @@
       } catch {
         thumbnailSettings = [];
       }
+      try {
+        const saved = await backend.gridLayoutGetPrefs(activeProfileId);
+        if (saved) {
+          applyLoadedPrefs(saved);
+        }
+      } catch {
+        /* keep defaults */
+      }
     } else {
       thumbnailSettings = [];
     }
@@ -210,12 +254,36 @@
   async function applyLayout() {
     const payload = buildPayload();
     if (!payload) return;
+    const profileId = payload.profileId;
     try {
       await backend.gridApplyLayout(payload);
-      status = `Applied layout for ${preview.length} thumbnails`;
+      await backend.gridLayoutSavePrefs(profileId, collectFormPrefs());
+      status = `Applied layout for ${preview.length} thumbnails; grid settings saved for this profile`;
       error = "";
     } catch (e) {
       error = String(e);
+    }
+  }
+
+  async function exportGridLayoutPrefs() {
+    if (exportBusy || activeProfileId == null) return;
+    exportBusy = true;
+    error = "";
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const defaultPath = `yaep-grid-layout-${formatYyyyMmDd(new Date())}.json`;
+      const filePath = await save({
+        title: "Export grid layout settings",
+        defaultPath,
+        filters: [{ name: "YAEP grid layout", extensions: ["json"] }],
+      });
+      if (!filePath) return;
+      await backend.gridLayoutExportPrefsToPath(filePath, activeProfileId, collectFormPrefs());
+      status = "Grid layout settings exported.";
+    } catch (e) {
+      error = String(e);
+    } finally {
+      exportBusy = false;
     }
   }
 
@@ -245,7 +313,12 @@
     <Field class="sm:col-span-3">
       <FieldLabel class="text-muted-foreground">Aspect ratio</FieldLabel>
       <FieldContent>
-        <Select.Root type="single" bind:value={selectedAspectRatio} items={aspectRatioItems}>
+        <Select.Root
+          type="single"
+          bind:value={selectedAspectRatio}
+          items={aspectRatioItems}
+          onValueChange={() => syncHeightFromWidth()}
+        >
           <Select.Trigger class="w-full">
             <span data-slot="select-value">{selectedAspectRatio}</span>
           </Select.Trigger>
@@ -409,6 +482,15 @@
     <Button onclick={applyLayout} variant="secondary" class="gap-2">
       <PlayIcon class="size-4 shrink-0" aria-hidden="true" />
       Apply Layout
+    </Button>
+    <Button
+      onclick={() => void exportGridLayoutPrefs()}
+      variant="outline"
+      class="gap-2"
+      disabled={activeProfileId == null || exportBusy}
+    >
+      <DownloadIcon class="size-4 shrink-0" aria-hidden="true" />
+      Export settings
     </Button>
   </div>
 

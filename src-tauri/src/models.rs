@@ -378,6 +378,60 @@ pub struct GridLayoutPreviewItem {
     pub height: i64,
 }
 
+/// Grid Layout page form state persisted per profile (SQLite `AppSettings` / export bundle).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GridLayoutFormPrefs {
+    pub aspect_ratio: String,
+    pub grid_cell_width: i64,
+    pub grid_cell_height: i64,
+    pub grid_start_x: i64,
+    pub grid_start_y: i64,
+    pub grid_columns: i64,
+    pub only_affect_active_thumbnails: bool,
+    #[serde(default)]
+    pub selected_monitor_index: String,
+    #[serde(default)]
+    pub selected_anchor_title: String,
+}
+
+impl GridLayoutFormPrefs {
+    pub fn normalize(&mut self) {
+        self.aspect_ratio = Self::sanitize_aspect_ratio(&self.aspect_ratio);
+        self.grid_cell_width = Self::clamp_i64(self.grid_cell_width, 192, 960);
+        self.grid_cell_height = Self::clamp_i64(self.grid_cell_height, 108, 540);
+        self.grid_start_x = Self::clamp_i64(self.grid_start_x, -10_000, 31_000);
+        self.grid_start_y = Self::clamp_i64(self.grid_start_y, -10_000, 31_000);
+        self.grid_columns = Self::clamp_i64(self.grid_columns, 1, 10);
+        self.selected_monitor_index = self.selected_monitor_index.trim().to_string();
+        if !self.selected_monitor_index.is_empty()
+            && self.selected_monitor_index.parse::<i32>().is_err()
+        {
+            self.selected_monitor_index.clear();
+        }
+        let anchor = self.selected_anchor_title.trim().chars().take(2048).collect::<String>();
+        self.selected_anchor_title = anchor;
+    }
+
+    fn clamp_i64(n: i64, lo: i64, hi: i64) -> i64 {
+        n.max(lo).min(hi)
+    }
+
+    fn sanitize_aspect_ratio(raw: &str) -> String {
+        let t = raw.trim();
+        let parts: Vec<&str> = t.split(':').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        if parts.len() != 2 {
+            return "16:9".to_string();
+        }
+        let a: f64 = parts[0].parse().unwrap_or(0.0);
+        let b: f64 = parts[1].parse().unwrap_or(0.0);
+        if !a.is_finite() || !b.is_finite() || a <= 0.0 || b <= 0.0 {
+            return "16:9".to_string();
+        }
+        format!("{}:{}", parts[0], parts[1])
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EveDetectedProfile {

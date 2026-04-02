@@ -3,6 +3,7 @@ import type {
   ClientGroup,
   ClientGroupDetail,
   HealthSnapshot,
+  GridLayoutFormPrefs,
   GridLayoutPayload,
   GridLayoutPreviewItem,
   MonitorInfoDto,
@@ -232,6 +233,15 @@ export const backend = {
   gridApplyLayout(payload: GridLayoutPayload): Promise<void> {
     return invoke("grid_apply_layout", { payload });
   },
+  gridLayoutGetPrefs(profileId: number): Promise<GridLayoutFormPrefs | null> {
+    return invoke("grid_layout_get_prefs", { profileId });
+  },
+  gridLayoutSavePrefs(profileId: number, prefs: GridLayoutFormPrefs): Promise<void> {
+    return invoke("grid_layout_save_prefs", { profileId, prefs });
+  },
+  gridLayoutExportPrefsToPath(path: string, profileId: number, prefs: GridLayoutFormPrefs): Promise<void> {
+    return invoke("grid_layout_export_prefs_to_path", { path, profileId, prefs });
+  },
   activateWindowByPid(pid: number): Promise<void> {
     return invoke("activate_window_by_pid", { pid });
   },
@@ -322,5 +332,17 @@ export const backend = {
   },
   widgetOverlayToggle(): Promise<boolean> {
     return invoke("widget_overlay_toggle");
+  },
+  yaepExportSettings(): Promise<string> {
+    return invoke("yaep_export_settings");
+  },
+  yaepExportSettingsToPath(path: string): Promise<void> {
+    return invoke("yaep_export_settings_to_path", { path });
+  },
+  yaepImportSettings(json: string): Promise<void> {
+    return invoke("yaep_import_settings", { json });
+  },
+  yaepImportSettingsFromPath(path: string): Promise<void> {
+    return invoke("yaep_import_settings_from_path", { path });
   }
 };

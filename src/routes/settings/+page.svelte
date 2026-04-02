@@ -14,14 +14,19 @@
     CardTitle,
   } from "$lib/components/ui/card";
   import { Field, FieldContent, FieldLabel } from "$lib/components/ui/field";
+  import * as AlertDialog from "$lib/components/ui/alert-dialog";
   import SaveIcon from "@lucide/svelte/icons/save";
   import SettingsIcon from "@lucide/svelte/icons/settings";
+  import DownloadIcon from "@lucide/svelte/icons/download";
+  import UploadIcon from "@lucide/svelte/icons/upload";
 
   let enableThumbnailDragging = $state(true);
   let startHidden = $state(false);
   let theme = $state("Dark");
   let saveStatus = $state("");
   let error = $state("");
+  let importConfirmOpen = $state(false);
+  let backupBusy = $state(false);
 
   function userSafeErrorMessage(): string {
     return "Unable to save settings right now. Please try again.";
@@ -38,6 +43,61 @@
       error = "";
     } catch (e) {
       error = userSafeErrorMessage();
+    }
+  }
+
+  function formatYyyyMmDd(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  async function exportYaepSettings() {
+    if (backupBusy) return;
+    backupBusy = true;
+    error = "";
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const defaultPath = `yaep-settings-${formatYyyyMmDd(new Date())}.json`;
+      const filePath = await save({
+        title: "Export YAEP settings",
+        defaultPath,
+        filters: [{ name: "YAEP settings backup", extensions: ["json"] }]
+      });
+      if (!filePath) return;
+      await backend.yaepExportSettingsToPath(filePath);
+      saveStatus = "Settings exported to file.";
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      backupBusy = false;
+    }
+  }
+
+  async function pickAndImportYaepSettings() {
+    importConfirmOpen = false;
+    if (backupBusy) return;
+    backupBusy = true;
+    error = "";
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const picked = await open({
+        title: "Import YAEP settings",
+        filters: [{ name: "YAEP settings backup", extensions: ["json"] }],
+        multiple: false
+      });
+      if (picked === null) return;
+      const path = Array.isArray(picked) ? picked[0] : picked;
+      if (!path) return;
+      await backend.yaepImportSettingsFromPath(path);
+      await refresh();
+      setMode(theme === "Light" ? "light" : "dark");
+      saveStatus = "Settings imported. Thumbnails, Mumble links, widgets, and profiles were replaced.";
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      backupBusy = false;
     }
   }
 
@@ -130,6 +190,38 @@
           Save settings
         </Button>
       </div>
+      <Field class="max-w-3xl pt-4">
+        <FieldLabel class="text-foreground font-medium">Backup and restore</FieldLabel>
+        <FieldContent class="mt-2 flex flex-row flex-nowrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            class="gap-2"
+            disabled={backupBusy}
+            onclick={() => void exportYaepSettings()}
+          >
+            <DownloadIcon class="size-4 shrink-0" aria-hidden="true" />
+            Export settings
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            class="gap-2"
+            disabled={backupBusy}
+            onclick={() => {
+              importConfirmOpen = true;
+            }}
+          >
+            <UploadIcon class="size-4 shrink-0" aria-hidden="true" />
+            Import settings
+          </Button>
+        </FieldContent>
+        <p class="text-muted-foreground mt-2 max-w-2xl text-sm leading-snug">
+          Saves or replaces all YAEP data in this app: profiles, thumbnails, Mumble links and overlay,
+          widget overlay, client groups, EVE log paths and chat channels, theme, and other app settings.
+          Import cannot be undone; export a backup first.
+        </p>
+      </Field>
       <div class="pt-2">
         <a class="text-sm text-primary underline underline-offset-2" href="/settings/eve-logs">
           Open EVE log settings
@@ -138,3 +230,19 @@
     </div>
   </CardContent>
 </Card>
+
+<AlertDialog.Root bind:open={importConfirmOpen}>
+  <AlertDialog.Content>
+    <AlertDialog.Header>
+      <AlertDialog.Title>Replace all YAEP settings?</AlertDialog.Title>
+      <AlertDialog.Description>
+        Importing will overwrite everything stored in YAEP on this PC with the backup file. Export a backup
+        first if you need to keep your current setup.
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+      <AlertDialog.Action onclick={() => void pickAndImportYaepSettings()}>Import</AlertDialog.Action>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>

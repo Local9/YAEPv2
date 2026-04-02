@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender, TryRecvError};
 use std::sync::{Mutex, OnceLock};
@@ -738,7 +738,7 @@ fn sanitize_rich_text(line: &str) -> String {
     let br_re = BR_RE.get_or_init(|| regex::Regex::new(r"<br\s*/?>").unwrap());
     let re = TAG_RE.get_or_init(|| regex::Regex::new(r"</?(color|font|b)[^>]*>").unwrap());
     let with_newlines = br_re.replace_all(line, "\n");
-    re.replace_all(line, "")
+    re.replace_all(with_newlines.as_ref(), "")
         .replace('\u{feff}', "")
         .trim()
         .to_string()

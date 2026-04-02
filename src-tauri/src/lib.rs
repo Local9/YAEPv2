@@ -12,11 +12,12 @@ mod models;
 mod monitors;
 mod thumbnail_service;
 mod thumbnail_webview_overlay;
+mod settings_backup;
 mod widget_overlay;
 mod widget_service;
 mod windows;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
@@ -32,8 +33,9 @@ use crate::eve_profile_tools::EveProfileToolsService;
 use crate::hotkeys::HotkeyService;
 use crate::models::{
     BrowserQuickLink, ClientGroup, ClientGroupDetail, DrawerSettings, EveChatChannel,
-    EveDetectedProfile, EveLogSettings, EveProfileSettingsSources, GridLayoutPayload,
-    GridLayoutPreviewItem, HealthSnapshot, MonitorInfoDto, MumbleLink, MumbleLinksOverlaySettings,
+    EveDetectedProfile, EveLogSettings, EveProfileSettingsSources, GridLayoutFormPrefs,
+    GridLayoutPayload, GridLayoutPreviewItem, HealthSnapshot, MonitorInfoDto, MumbleLink,
+    MumbleLinksOverlaySettings,
     MumbleServerGroup, MumbleTreeSnapshot, Profile, ThumbnailConfig, ThumbnailSetting,
     WidgetOverlayLayout, WidgetOverlaySettings,
 };
@@ -970,6 +972,59 @@ fn grid_apply_layout(
 }
 
 #[tauri::command]
+fn grid_layout_get_prefs(
+    state: State<'_, AppState>,
+    profile_id: i64,
+) -> Result<Option<GridLayoutFormPrefs>, String> {
+    state
+        .db
+        .get_grid_layout_prefs(profile_id)
+        .map_err(|e| sanitize_error("grid_layout_get_prefs", e))
+}
+
+#[tauri::command]
+fn grid_layout_save_prefs(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    prefs: GridLayoutFormPrefs,
+) -> Result<(), String> {
+    state
+        .db
+        .set_grid_layout_prefs(profile_id, prefs)
+        .map_err(|e| sanitize_error("grid_layout_save_prefs", e))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GridLayoutPrefsExportBody {
+    export_kind: &'static str,
+    version: u32,
+    profile_id: i64,
+    prefs: GridLayoutFormPrefs,
+}
+
+#[tauri::command]
+fn grid_layout_export_prefs_to_path(
+    path: String,
+    profile_id: i64,
+    mut prefs: GridLayoutFormPrefs,
+) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("No file path provided.".to_string());
+    }
+    prefs.normalize();
+    let body = GridLayoutPrefsExportBody {
+        export_kind: "yaep-grid-layout-prefs",
+        version: 1,
+        profile_id,
+        prefs,
+    };
+    let json = serde_json::to_string_pretty(&body).map_err(|e| e.to_string())?;
+    std::fs::write(trimmed, json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn eve_profiles_list(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     state.eve_tools.list_profiles()
 }
@@ -1183,6 +1238,62 @@ fn widget_overlay_toggle(state: State<'_, AppState>, app_handle: AppHandle) -> R
     widget_overlay::toggle_widgets_suppressed(&app_handle, state.db.as_ref())
 }
 
+fn refresh_runtime_after_settings_import(state: &AppState, app_handle: &AppHandle) {
+    state.thumbnail_service.stop();
+    state.eve_chat_logs.stop();
+    let app_for_thumbnails = app_handle.clone();
+    state.thumbnail_service.start(
+        app_for_thumbnails,
+        state.db.clone(),
+        state.window_service.clone(),
+        state.dwm.clone(),
+    );
+    state.eve_chat_logs.start(
+        app_handle.clone(),
+        state.db.clone(),
+        state.widget_service.clone(),
+    );
+    state.dwm.sync_thumbnail_graph();
+    refresh_global_hotkeys();
+    widget_overlay::sync_widget_overlay_from_db(app_handle, state.db.as_ref());
+    let _ = app_handle.emit("mumble-tree-changed", ());
+    let _ = app_handle.emit("widget-overlay-settings-changed", ());
+}
+
+#[tauri::command]
+fn yaep_export_settings(state: State<'_, AppState>) -> Result<String, String> {
+    crate::settings_backup::export_bundle(state.db.as_ref())
+}
+
+#[tauri::command]
+fn yaep_export_settings_to_path(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("No file path provided.".to_string());
+    }
+    let json = crate::settings_backup::export_bundle(state.db.as_ref())?;
+    std::fs::write(trimmed, json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn yaep_import_settings(state: State<'_, AppState>, app_handle: AppHandle, json: String) -> Result<(), String> {
+    crate::settings_backup::import_bundle(state.db.as_ref(), &json)?;
+    refresh_runtime_after_settings_import(&state, &app_handle);
+    Ok(())
+}
+
+#[tauri::command]
+fn yaep_import_settings_from_path(state: State<'_, AppState>, app_handle: AppHandle, path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("No file path provided.".to_string());
+    }
+    let json = std::fs::read_to_string(trimmed).map_err(|e| e.to_string())?;
+    crate::settings_backup::import_bundle(state.db.as_ref(), &json)?;
+    refresh_runtime_after_settings_import(&state, &app_handle);
+    Ok(())
+}
+
 pub fn run() {
     diag::install_panic_hook();
     diag::trace("boot", "run() entered");
@@ -1295,6 +1406,9 @@ pub fn run() {
             hotkeys_capture_stop,
             grid_preview_layout,
             grid_apply_layout,
+            grid_layout_get_prefs,
+            grid_layout_save_prefs,
+            grid_layout_export_prefs_to_path,
             eve_profiles_list,
             eve_profiles_detected,
             eve_copy_profile_on_server,
@@ -1319,7 +1433,11 @@ pub fn run() {
             widget_overlay_refresh,
             widget_overlay_update_hit_regions,
             widget_overlay_set_dragging,
-            widget_overlay_toggle
+            widget_overlay_toggle,
+            yaep_export_settings,
+            yaep_export_settings_to_path,
+            yaep_import_settings,
+            yaep_import_settings_from_path
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {

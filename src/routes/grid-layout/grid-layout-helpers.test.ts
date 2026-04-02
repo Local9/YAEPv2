@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MonitorInfoDto } from "$models/domain";
 import {
+  buildGridLayoutFormPrefs,
   buildGridLayoutPayload,
   clampNumber,
   formatMonitorLabel,
@@ -160,6 +161,33 @@ describe("grid-layout helpers", () => {
         profileId: 8,
         selectedMonitorIndex: 2,
         gridAnchorWindowTitle: "Client Window",
+      });
+    });
+  });
+
+  describe("buildGridLayoutFormPrefs", () => {
+    it("maps UI fields to persisted prefs shape", () => {
+      const prefs = buildGridLayoutFormPrefs({
+        selectedAspectRatio: "21:9",
+        gridCellWidth: 320,
+        gridCellHeight: 137,
+        gridStartX: 10,
+        gridStartY: 20,
+        gridColumns: 2,
+        onlyAffectActiveThumbnails: false,
+        selectedMonitorIndex: "1",
+        selectedAnchorTitle: "Alpha",
+      });
+      expect(prefs).toEqual({
+        aspectRatio: "21:9",
+        gridCellWidth: 320,
+        gridCellHeight: 137,
+        gridStartX: 10,
+        gridStartY: 20,
+        gridColumns: 2,
+        onlyAffectActiveThumbnails: false,
+        selectedMonitorIndex: "1",
+        selectedAnchorTitle: "Alpha",
       });
     });
   });

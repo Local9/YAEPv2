@@ -1,4 +1,4 @@
-import type { GridLayoutPayload, MonitorInfoDto } from "$models/domain";
+import type { GridLayoutFormPrefs, GridLayoutPayload, MonitorInfoDto } from "$models/domain";
 
 export const GRID_LAYOUT_DEFAULT_RATIO = { rw: 16, rh: 9 };
 
@@ -120,5 +120,29 @@ export function buildGridLayoutPayload(input: BuildPayloadInput): {
         input.selectedMonitorIndex === "" ? null : Number.parseInt(input.selectedMonitorIndex, 10),
       gridAnchorWindowTitle: input.selectedAnchorTitle === "" ? null : input.selectedAnchorTitle,
     },
+  };
+}
+
+export function buildGridLayoutFormPrefs(input: {
+  selectedAspectRatio: string;
+  gridCellWidth: number;
+  gridCellHeight: number;
+  gridStartX: number;
+  gridStartY: number;
+  gridColumns: number;
+  onlyAffectActiveThumbnails: boolean;
+  selectedMonitorIndex: string;
+  selectedAnchorTitle: string;
+}): GridLayoutFormPrefs {
+  return {
+    aspectRatio: input.selectedAspectRatio,
+    gridCellWidth: input.gridCellWidth,
+    gridCellHeight: input.gridCellHeight,
+    gridStartX: input.gridStartX,
+    gridStartY: input.gridStartY,
+    gridColumns: input.gridColumns,
+    onlyAffectActiveThumbnails: input.onlyAffectActiveThumbnails,
+    selectedMonitorIndex: input.selectedMonitorIndex,
+    selectedAnchorTitle: input.selectedAnchorTitle,
   };
 }

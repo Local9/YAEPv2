@@ -261,3 +261,17 @@ export type GridLayoutPreviewItem = {
   width: number;
   height: number;
 };
+
+/** Grid Layout page form fields persisted per profile (SQLite + YAEP settings export). */
+export type GridLayoutFormPrefs = {
+  aspectRatio: string;
+  gridCellWidth: number;
+  gridCellHeight: number;
+  gridStartX: number;
+  gridStartY: number;
+  gridColumns: number;
+  onlyAffectActiveThumbnails: boolean;
+  /** Empty string = all monitors / default origin */
+  selectedMonitorIndex: string;
+  selectedAnchorTitle: string;
+};

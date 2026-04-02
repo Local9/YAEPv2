@@ -1,13 +1,24 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 
 use crate::models::{
     ClientGroup, ClientGroupDetail, ClientGroupMember, DrawerSettings, EveChatChannel,
-    EveLogSettings, MumbleFolder, MumbleLink, MumbleLinksOverlaySettings, MumbleServerGroup,
-    MumbleTreeSnapshot, Profile, ThumbnailConfig, ThumbnailSetting,
+    EveLogSettings, GridLayoutFormPrefs, MumbleFolder, MumbleLink, MumbleLinksOverlaySettings,
+    MumbleServerGroup, MumbleTreeSnapshot, Profile, ThumbnailConfig, ThumbnailSetting,
 };
+
+const GRID_LAYOUT_PREFS_KEY: &str = "GridLayoutPrefsJson";
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct GridLayoutPrefsStore {
+    #[serde(default)]
+    version: u32,
+    #[serde(default)]
+    by_profile: HashMap<String, GridLayoutFormPrefs>,
+}
 
 pub struct DbService {
     db_path: PathBuf,
@@ -52,6 +63,10 @@ impl DbService {
 
     fn connection(&self) -> Result<Connection, String> {
         Connection::open(&self.db_path).map_err(|e| e.to_string())
+    }
+
+    pub(crate) fn db_conn(&self) -> Result<Connection, String> {
+        self.connection()
     }
 
     fn initialize(&self) -> Result<(), String> {
@@ -1936,6 +1951,38 @@ impl DbService {
         )
         .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    fn load_grid_layout_prefs_store(&self) -> Result<GridLayoutPrefsStore, String> {
+        let raw = self.get_app_setting(GRID_LAYOUT_PREFS_KEY.to_string())?;
+        match raw.filter(|s| !s.trim().is_empty()) {
+            None => Ok(GridLayoutPrefsStore::default()),
+            Some(s) => serde_json::from_str(&s).map_err(|e| e.to_string()),
+        }
+    }
+
+    pub fn get_grid_layout_prefs(&self, profile_id: i64) -> Result<Option<GridLayoutFormPrefs>, String> {
+        let store = self.load_grid_layout_prefs_store()?;
+        let key = profile_id.to_string();
+        let Some(mut prefs) = store.by_profile.get(&key).cloned() else {
+            return Ok(None);
+        };
+        prefs.normalize();
+        Ok(Some(prefs))
+    }
+
+    pub fn set_grid_layout_prefs(&self, profile_id: i64, mut prefs: GridLayoutFormPrefs) -> Result<(), String> {
+        prefs.normalize();
+        let mut store = self.load_grid_layout_prefs_store()?;
+        store.version = 1;
+        store
+            .by_profile
+            .insert(profile_id.to_string(), prefs);
+        let json = serde_json::to_string(&store).map_err(|e| e.to_string())?;
+        if json.len() > 512 * 1024 {
+            return Err("Grid layout preferences are too large to store.".to_string());
+        }
+        self.set_app_setting(GRID_LAYOUT_PREFS_KEY.to_string(), json)
     }
 }
 
