@@ -16,13 +16,13 @@
   } from "$lib/components/ui/card";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import FolderIcon from "@lucide/svelte/icons/folder";
   import LinkIcon from "@lucide/svelte/icons/link";
+  import MoreVerticalIcon from "@lucide/svelte/icons/more-vertical";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import RadioIcon from "@lucide/svelte/icons/radio";
-  import SaveIcon from "@lucide/svelte/icons/save";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
 
   const MUMBLE_LINK_HOTKEY_CAPTURE = "mumbleLink";
   const HOTKEY_INPUT_CLASS = "min-w-[10rem] cursor-pointer select-none";
@@ -49,6 +49,16 @@
     label: string;
   } | null>(null);
   let confirmOpen = $state(false);
+  /** Folder id -> expanded; omitted ids default to expanded (true). */
+  let folderExpandedById = $state<Record<number, boolean>>({});
+
+  function isFolderExpanded(folderId: number): boolean {
+    return folderExpandedById[folderId] !== false;
+  }
+
+  function setFolderExpanded(folderId: number, expanded: boolean) {
+    folderExpandedById = { ...folderExpandedById, [folderId]: expanded };
+  }
 
   function userSafeMumbleErrorMessage(): string {
     return "Unable to save Mumble link changes right now. Please try again.";
@@ -132,17 +142,17 @@
     }
   }
 
-  async function saveFolder(f: MumbleFolder) {
+  async function saveFolder(f: MumbleFolder, opts?: { silent?: boolean }) {
     try {
       await backend.updateMumbleFolder(f.id, f.name.trim(), f.displayOrder);
-      status = "Folder saved";
+      if (!opts?.silent) status = "Folder saved";
       await refresh();
     } catch {
       error = userSafeMumbleErrorMessage();
     }
   }
 
-  async function saveLink(link: MumbleLink) {
+  async function saveLink(link: MumbleLink, opts?: { silent?: boolean }) {
     const url = link.url.trim();
     if (!isAllowedMumbleLinkUrl(url)) {
       error = "Link URL must start with mumble:// or https://";
@@ -158,7 +168,7 @@
         link.serverGroupId,
         link.folderId ?? null
       );
-      status = "Link saved";
+      if (!opts?.silent) status = "Link saved";
       await refresh();
     } catch {
       error = userSafeMumbleErrorMessage();
@@ -351,40 +361,56 @@
     class="border-border flex flex-col gap-2 border-b py-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2"
     style:margin-left={`${depth * 16}px`}
   >
-    <LinkIcon class="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
-    <Input
-      class="min-w-32 flex-1 sm:max-w-xs"
-      bind:value={link.name}
-      onkeydown={(e) => onEnterSubmit(e, () => void saveLink(link))}
-    />
-    <Input
-      class="min-w-48 flex-[2] font-mono text-sm"
-      bind:value={link.url}
-      onkeydown={(e) => onEnterSubmit(e, () => void saveLink(link))}
-    />
-    <Input
-      class="{HOTKEY_INPUT_CLASS} w-36 {captureHotkeyLinkId === link.id
-        ? HOTKEY_CAPTURE_RING_CLASS
-        : ''}"
-      readonly
-      value={link.hotkey}
-      placeholder="Hotkey"
-      onpointerdown={() => void startLinkHotkeyCapture(link.id)}
-    />
-    <Input
-      class="w-20"
-      type="number"
-      bind:value={link.displayOrder}
-      onkeydown={(e) => onEnterSubmit(e, () => void saveLink(link))}
-    />
-    <div class="flex gap-2">
-      <Button type="button" size="sm" class="gap-1" onclick={() => void saveLink(link)}>
-        <SaveIcon class="size-4" aria-hidden="true" />
-        Save
-      </Button>
-      <Button type="button" variant="destructive" size="sm" onclick={() => openDeleteLink(link)}>
-        <Trash2Icon class="size-4" aria-hidden="true" />
-      </Button>
+    <LinkIcon class="text-muted-foreground size-4 shrink-0 sm:mt-0.5" aria-hidden="true" />
+    <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      <Input
+        class="min-w-32 flex-1 sm:max-w-xs"
+        bind:value={link.name}
+        onblur={() => void saveLink(link, { silent: true })}
+        onkeydown={(e) => onEnterSubmit(e, () => void saveLink(link, { silent: true }))}
+      />
+      <Input
+        class="min-w-48 flex-[2] font-mono text-sm"
+        bind:value={link.url}
+        onblur={() => void saveLink(link, { silent: true })}
+        onkeydown={(e) => onEnterSubmit(e, () => void saveLink(link, { silent: true }))}
+      />
+      <Input
+        class="{HOTKEY_INPUT_CLASS} w-36 {captureHotkeyLinkId === link.id
+          ? HOTKEY_CAPTURE_RING_CLASS
+          : ''}"
+        readonly
+        value={link.hotkey}
+        placeholder="Hotkey"
+        onpointerdown={() => void startLinkHotkeyCapture(link.id)}
+      />
+      <Input
+        class="w-20 shrink-0"
+        type="number"
+        bind:value={link.displayOrder}
+        onblur={() => void saveLink(link, { silent: true })}
+        onkeydown={(e) => onEnterSubmit(e, () => void saveLink(link, { silent: true }))}
+      />
+    </div>
+    <div class="ml-auto flex shrink-0 items-center self-end sm:self-center">
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            class="text-muted-foreground size-8"
+            aria-label="Link actions"
+          >
+            <MoreVerticalIcon class="size-4" aria-hidden="true" />
+          </Button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content align="end">
+          <DropdownMenu.Item variant="destructive" onclick={() => openDeleteLink(link)}>
+            Delete link
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
     </div>
   </div>
 {/snippet}
@@ -392,89 +418,83 @@
 {#snippet folderBlock(folder: MumbleFolder, depth: number)}
   {@const children = foldersForParent(folder.serverGroupId, folder.id)}
   {@const linksHere = linksForFolder(folder.serverGroupId, folder.id)}
-  <Collapsible.Root class="mt-1" open>
-    <div style:margin-left={`${depth * 16}px`}>
-      <Collapsible.Trigger
-        class="hover:bg-muted/50 flex w-full items-center gap-2 rounded-md px-1 py-1 text-left"
-      >
-        <ChevronDownIcon class="size-4 shrink-0 transition-transform [[data-state=open]_&]:rotate-180" />
+  <div class="min-w-0" style:margin-left={`${depth * 16}px`}>
+  <Collapsible.Root
+    class="mt-2 min-w-0 pl-2"
+    open={isFolderExpanded(folder.id)}
+    onOpenChange={(expanded: boolean) => setFolderExpanded(folder.id, expanded)}
+  >
+    <div
+      class="hover:bg-muted/50 flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-1"
+    >
+      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <Collapsible.Trigger
+          class="text-muted-foreground hover:bg-muted data-[state=open]:[&_svg]:rotate-180 inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-transparent"
+          aria-label={isFolderExpanded(folder.id) ? "Collapse folder" : "Expand folder"}
+          type="button"
+        >
+          <ChevronDownIcon class="size-4 shrink-0 transition-transform duration-200" />
+        </Collapsible.Trigger>
         <FolderIcon class="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
         <Input
-          class="h-8 max-w-xs flex-1"
+          class="h-8 min-w-0 max-w-xs flex-1"
           bind:value={folder.name}
-          onclick={(e) => e.stopPropagation()}
-          onkeydown={(e) => onEnterSubmit(e, () => void saveFolder(folder), { stopBubble: true })}
+          onblur={() => void saveFolder(folder, { silent: true })}
+          onkeydown={(e) => onEnterSubmit(e, () => void saveFolder(folder, { silent: true }))}
         />
         <span class="text-muted-foreground text-xs">order</span>
         <Input
-          class="h-8 w-16"
+          class="h-8 w-16 shrink-0"
           type="number"
           bind:value={folder.displayOrder}
-          onclick={(e) => e.stopPropagation()}
-          onkeydown={(e) => onEnterSubmit(e, () => void saveFolder(folder), { stopBubble: true })}
+          onblur={() => void saveFolder(folder, { silent: true })}
+          onkeydown={(e) => onEnterSubmit(e, () => void saveFolder(folder, { silent: true }))}
         />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          class="shrink-0"
-          onclick={(e) => {
-            e.stopPropagation();
-            beginSubfolderDraft(folder.serverGroupId, folder.id);
-          }}
-        >
-          <PlusIcon class="size-4" aria-hidden="true" />
-          Subfolder
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          class="shrink-0"
-          onclick={(e) => {
-            e.stopPropagation();
-            beginLinkDraft(folder.serverGroupId, folder.id);
-          }}
-        >
-          <PlusIcon class="size-4" aria-hidden="true" />
-          Link
-        </Button>
-        <Button
-          type="button"
-          variant="destructive"
-          size="sm"
-          class="shrink-0"
-          onclick={(e) => {
-            e.stopPropagation();
-            openDeleteFolder(folder);
-          }}
-        >
-          <Trash2Icon class="size-4" aria-hidden="true" />
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          class="shrink-0"
-          onclick={(e) => {
-            e.stopPropagation();
-            void saveFolder(folder);
-          }}
-        >
-          Save
-        </Button>
-      </Collapsible.Trigger>
-      <Collapsible.Content class="pl-4">
-        {@render folderDraftPanel(folder.serverGroupId, folder.id, depth + 1)}
-        {@render linkDraftPanel(folder.serverGroupId, folder.id)}
-        {#each linksHere as link (link.id)}
-          {@render linkRow(link, depth + 1)}
-        {/each}
-        {#each children as sub (sub.id)}
-          {@render folderBlock(sub, depth + 1)}
-        {/each}
-      </Collapsible.Content>
+      </div>
+      <div class="ml-auto flex shrink-0 items-center">
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              class="text-muted-foreground size-8"
+              aria-label="Folder actions"
+            >
+              <MoreVerticalIcon class="size-4" aria-hidden="true" />
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content align="start" class="w-44">
+            <DropdownMenu.Item
+              onclick={() => beginSubfolderDraft(folder.serverGroupId, folder.id)}
+            >
+              <PlusIcon class="mr-2 size-4" aria-hidden="true" />
+              Add subfolder
+            </DropdownMenu.Item>
+            <DropdownMenu.Item onclick={() => beginLinkDraft(folder.serverGroupId, folder.id)}>
+              <LinkIcon class="mr-2 size-4" aria-hidden="true" />
+              Add link
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator />
+            <DropdownMenu.Item variant="destructive" onclick={() => openDeleteFolder(folder)}>
+              Delete folder
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      </div>
     </div>
+    <Collapsible.Content class="min-w-0 pl-1 pt-1">
+      {@render folderDraftPanel(folder.serverGroupId, folder.id, depth + 1)}
+      {@render linkDraftPanel(folder.serverGroupId, folder.id)}
+      {#each linksHere as link (link.id)}
+        {@render linkRow(link, depth + 1)}
+      {/each}
+      {#each children as sub (sub.id)}
+        {@render folderBlock(sub, depth + 1)}
+      {/each}
+    </Collapsible.Content>
   </Collapsible.Root>
+  </div>
 {/snippet}
 
 <Card class="shadow-sm">
@@ -496,42 +516,48 @@
         {#each sortedGroups as group (group.id)}
           <Collapsible.Root class="border-border rounded-lg border" open>
             <Collapsible.Trigger
-              class="hover:bg-muted/40 flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left"
+              class="hover:bg-muted/40 flex w-full items-center gap-2 px-3 py-2 text-left"
             >
               <ChevronDownIcon
                 class="size-4 shrink-0 transition-transform [[data-state=open]_&]:rotate-180"
               />
               {#if multipleServerGroups}
                 <span class="text-foreground min-w-0 flex-1 font-medium">{group.name}</span>
+              {:else}
+                <span class="min-w-0 flex-1"></span>
               {/if}
-              <span class="flex flex-wrap items-center gap-2 {multipleServerGroups ? '' : 'ml-auto'}">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    beginRootFolderDraft(group.id);
-                  }}
-                >
-                  <PlusIcon class="size-4" aria-hidden="true" />
-                  Folder
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    beginLinkDraft(group.id, null);
-                  }}
-                >
-                  <PlusIcon class="size-4" aria-hidden="true" />
-                  Link
-                </Button>
-              </span>
+              <div
+                class="ml-auto shrink-0"
+                onclick={(e) => e.stopPropagation()}
+                onkeydown={(e) => e.stopPropagation()}
+                role="presentation"
+              >
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      class="text-muted-foreground size-8"
+                      aria-label="Server actions"
+                    >
+                      <MoreVerticalIcon class="size-4" aria-hidden="true" />
+                    </Button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content align="end">
+                    <DropdownMenu.Item onclick={() => beginRootFolderDraft(group.id)}>
+                      <PlusIcon class="mr-2 size-4" aria-hidden="true" />
+                      Add folder
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item onclick={() => beginLinkDraft(group.id, null)}>
+                      <LinkIcon class="mr-2 size-4" aria-hidden="true" />
+                      Add link
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+              </div>
             </Collapsible.Trigger>
-            <Collapsible.Content class="border-border border-t px-3 py-3">
+            <Collapsible.Content class="px-3 py-3">
               {@render folderDraftPanel(group.id, null, 0)}
               {@render linkDraftPanel(group.id, null)}
               {#each linksForFolder(group.id, null) as link (link.id)}
