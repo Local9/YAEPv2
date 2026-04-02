@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS MumbleFolders (
   ParentFolderId INTEGER NULL,
   Name TEXT NOT NULL,
   DisplayOrder INTEGER NOT NULL DEFAULT 0,
+  IconKey TEXT NULL,
   FOREIGN KEY (ServerGroupId) REFERENCES MumbleServerGroups(Id) ON DELETE CASCADE,
   FOREIGN KEY (ParentFolderId) REFERENCES MumbleFolders(Id) ON DELETE CASCADE
 );

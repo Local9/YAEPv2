@@ -5,7 +5,13 @@
   import type { MumbleFolder, MumbleLink, MumbleTreeSnapshot } from "$models/domain";
   import { formatMumbleServerGroupDisplayName } from "$lib/utils/mumble-display";
   import { deriveMumbleLinkName, isAllowedMumbleLinkUrl } from "$lib/utils/mumble-url";
+  import MumbleFolderIcon from "$lib/mumble/mumble-folder-icon.svelte";
+  import {
+    FOLDER_ICON_SELECT_ITEMS,
+    MUMBLE_FOLDER_ICON_OPTIONS
+  } from "$lib/mumble/folder-icon-keys";
   import { Button } from "$lib/components/ui/button";
+  import * as Select from "$lib/components/ui/select";
   import { Input } from "$lib/components/ui/input";
   import { toast } from "svelte-sonner";
   import {
@@ -19,7 +25,6 @@
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import FolderIcon from "@lucide/svelte/icons/folder";
   import LinkIcon from "@lucide/svelte/icons/link";
   import MoreVerticalIcon from "@lucide/svelte/icons/more-vertical";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -44,6 +49,7 @@
   let linkDraftName = $state("");
   let folderDraft = $state<{ serverGroupId: number; parentFolderId: number | null } | null>(null);
   let folderDraftName = $state("");
+  let folderDraftIconKey = $state("");
   let confirmDelete = $state<{
     kind: "folder" | "link";
     id: number;
@@ -145,7 +151,7 @@
 
   async function saveFolder(f: MumbleFolder, opts?: { silent?: boolean }) {
     try {
-      await backend.updateMumbleFolder(f.id, f.name.trim(), f.displayOrder);
+      await backend.updateMumbleFolder(f.id, f.name.trim(), f.displayOrder, f.iconKey ?? null);
       if (!opts?.silent) status = "Folder saved";
       await refresh();
     } catch {
@@ -179,16 +185,19 @@
   function beginRootFolderDraft(gid: number) {
     folderDraft = { serverGroupId: gid, parentFolderId: null };
     folderDraftName = "";
+    folderDraftIconKey = "";
   }
 
   function beginSubfolderDraft(gid: number, parentFolderId: number) {
     folderDraft = { serverGroupId: gid, parentFolderId };
     folderDraftName = "";
+    folderDraftIconKey = "";
   }
 
   function cancelFolderDraft() {
     folderDraft = null;
     folderDraftName = "";
+    folderDraftIconKey = "";
   }
 
   async function submitFolderDraft() {
@@ -199,7 +208,8 @@
         folderDraft.serverGroupId,
         folderDraft.parentFolderId,
         folderDraftName.trim(),
-        ord
+        ord,
+        folderDraftIconKey === "" ? null : folderDraftIconKey
       );
       status = "Folder created";
       cancelFolderDraft();
@@ -349,6 +359,34 @@
         placeholder="Folder name"
         onkeydown={(e) => onEnterSubmit(e, () => void submitFolderDraft())}
       />
+      <div class="flex flex-col gap-1.5">
+        <span class="text-muted-foreground text-xs font-medium">Folder icon</span>
+        <Select.Root type="single" bind:value={folderDraftIconKey} items={FOLDER_ICON_SELECT_ITEMS}>
+          <Select.Trigger class="w-full max-w-xs">
+            <span data-slot="select-value" class="flex items-center gap-2">
+              <MumbleFolderIcon
+                iconKey={folderDraftIconKey === "" ? null : folderDraftIconKey}
+                class="size-4 shrink-0"
+              />
+              {FOLDER_ICON_SELECT_ITEMS.find((i) => i.value === folderDraftIconKey)?.label ??
+                "Default"}
+            </span>
+          </Select.Trigger>
+          <Select.Content class="max-h-72">
+            {#each FOLDER_ICON_SELECT_ITEMS as item (item.value)}
+              <Select.Item value={item.value} label={item.label}>
+                <span class="flex items-center gap-2">
+                  <MumbleFolderIcon
+                    iconKey={item.value === "" ? null : item.value}
+                    class="size-4 shrink-0"
+                  />
+                  {item.label}
+                </span>
+              </Select.Item>
+            {/each}
+          </Select.Content>
+        </Select.Root>
+      </div>
       <div class="flex flex-wrap gap-2">
         <Button type="button" size="sm" onclick={() => void submitFolderDraft()}>Add folder</Button>
         <Button type="button" variant="outline" size="sm" onclick={cancelFolderDraft}>Cancel</Button>
@@ -371,7 +409,7 @@
         onkeydown={(e) => onEnterSubmit(e, () => void saveLink(link, { silent: true }))}
       />
       <Input
-        class="min-w-48 flex-[2] font-mono text-sm"
+        class="min-w-48 flex-2 font-mono text-sm"
         bind:value={link.url}
         onblur={() => void saveLink(link, { silent: true })}
         onkeydown={(e) => onEnterSubmit(e, () => void saveLink(link, { silent: true }))}
@@ -436,7 +474,42 @@
         >
           <ChevronDownIcon class="size-4 shrink-0 transition-transform duration-200" />
         </Collapsible.Trigger>
-        <FolderIcon class="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              class="text-muted-foreground h-8 shrink-0 gap-1 px-2"
+              aria-label="Folder icon"
+            >
+              <MumbleFolderIcon iconKey={folder.iconKey ?? null} class="size-4 shrink-0" />
+              <ChevronDownIcon class="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content align="start" class="w-56 max-h-[min(70vh,24rem)]">
+            <DropdownMenu.Item
+              onclick={() => {
+                folder.iconKey = null;
+                void saveFolder(folder);
+              }}
+            >
+              <MumbleFolderIcon iconKey={null} class="mr-2 size-4 shrink-0" />
+              Default
+            </DropdownMenu.Item>
+            {#each MUMBLE_FOLDER_ICON_OPTIONS as opt (opt.key)}
+              <DropdownMenu.Item
+                onclick={() => {
+                  folder.iconKey = opt.key;
+                  void saveFolder(folder);
+                }}
+              >
+                <MumbleFolderIcon iconKey={opt.key} class="mr-2 size-4 shrink-0" />
+                {opt.label}
+              </DropdownMenu.Item>
+            {/each}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
         <Input
           class="h-8 min-w-0 max-w-xs flex-1"
           bind:value={folder.name}
@@ -465,7 +538,7 @@
               <MoreVerticalIcon class="size-4" aria-hidden="true" />
             </Button>
           </DropdownMenu.Trigger>
-          <DropdownMenu.Content align="start" class="w-44">
+          <DropdownMenu.Content align="end" class="w-44">
             <DropdownMenu.Item
               onclick={() => beginSubfolderDraft(folder.serverGroupId, folder.id)}
             >
@@ -505,8 +578,8 @@
       <div>
         <CardTitle class="text-lg font-semibold tracking-tight">Mumble Links</CardTitle>
         <CardDescription
-          >Organize folders and links. Paste a URL to fill the name. Hotkeys are optional and can be set per
-          link.</CardDescription
+          >Organize folders and links. Use the icon control to the left of each folder name to change its icon.
+          Paste a URL to fill the name. Hotkeys are optional and can be set per link.</CardDescription
         >
       </div>
     </div>
@@ -520,7 +593,7 @@
               class="hover:bg-muted/40 flex w-full items-center gap-2 px-3 py-2 text-left"
             >
               <ChevronDownIcon
-                class="size-4 shrink-0 transition-transform [[data-state=open]_&]:rotate-180"
+                class="size-4 shrink-0 transition-transform in-data-[state=open]:rotate-180"
               />
               {#if multipleServerGroups}
                 <span class="text-foreground min-w-0 flex-1 font-medium"

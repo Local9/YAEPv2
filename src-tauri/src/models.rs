@@ -107,6 +107,9 @@ pub struct MumbleFolder {
     pub parent_folder_id: Option<i64>,
     pub name: String,
     pub display_order: i64,
+    /// Lucide-style slug (e.g. `headphones`); omitted or null means default icon in the UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

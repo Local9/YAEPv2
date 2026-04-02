@@ -63,6 +63,7 @@ impl DbService {
         conn.execute_batch(include_str!("../sql/mumble_folders.sql"))
             .map_err(|e| e.to_string())?;
         self.ensure_mumble_links_tree_columns(&conn)?;
+        self.ensure_mumble_folder_icon_key_column(&conn)?;
         self.ensure_thumbnail_character_id_column(&conn)?;
         self.ensure_thumbnail_decloak_flash_columns(&conn)?;
         self.ensure_eve_chat_channel_background_color_column(&conn)?;
@@ -82,6 +83,17 @@ impl DbService {
             }
         }
         Ok(false)
+    }
+
+    fn ensure_mumble_folder_icon_key_column(&self, conn: &Connection) -> Result<(), String> {
+        if !Self::table_has_column(conn, "MumbleFolders", "IconKey")? {
+            conn.execute(
+                "ALTER TABLE MumbleFolders ADD COLUMN IconKey TEXT NULL",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     fn ensure_mumble_links_tree_columns(&self, conn: &Connection) -> Result<(), String> {
@@ -1417,11 +1429,36 @@ impl DbService {
         })
     }
 
+    fn normalize_mumble_folder_icon_key(raw: Option<String>) -> Result<Option<String>, String> {
+        match raw {
+            None => Ok(None),
+            Some(s) => {
+                let t = s.trim().to_ascii_lowercase();
+                if t.is_empty() {
+                    return Ok(None);
+                }
+                if t.len() > 48 {
+                    return Err("Folder icon key is too long".to_string());
+                }
+                if !t
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                {
+                    return Err(
+                        "Folder icon key must use lowercase letters, digits, and hyphens only"
+                            .to_string(),
+                    );
+                }
+                Ok(Some(t))
+            }
+        }
+    }
+
     fn get_mumble_folders(&self) -> Result<Vec<MumbleFolder>, String> {
         let conn = self.connection()?;
         let mut stmt = conn
             .prepare(
-                "SELECT Id, ServerGroupId, ParentFolderId, Name, DisplayOrder
+                "SELECT Id, ServerGroupId, ParentFolderId, Name, DisplayOrder, IconKey
                  FROM MumbleFolders
                  ORDER BY ServerGroupId, ParentFolderId NULLS FIRST, DisplayOrder, Name",
             )
@@ -1434,6 +1471,7 @@ impl DbService {
                     parent_folder_id: row.get(2)?,
                     name: row.get(3)?,
                     display_order: row.get(4)?,
+                    icon_key: row.get(5)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -1495,10 +1533,12 @@ impl DbService {
         parent_folder_id: Option<i64>,
         name: String,
         display_order: i64,
+        icon_key: Option<String>,
     ) -> Result<i64, String> {
         if name.trim().is_empty() {
             return Err("Folder name cannot be empty".to_string());
         }
+        let icon_key = Self::normalize_mumble_folder_icon_key(icon_key)?;
         let conn = self.connection()?;
         if !self.mumble_server_group_exists(&conn, server_group_id)? {
             return Err("Server group not found".to_string());
@@ -1512,13 +1552,14 @@ impl DbService {
             }
         }
         conn.execute(
-            "INSERT INTO MumbleFolders (ServerGroupId, ParentFolderId, Name, DisplayOrder)
-             VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO MumbleFolders (ServerGroupId, ParentFolderId, Name, DisplayOrder, IconKey)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
             params![
                 server_group_id,
                 parent_folder_id,
                 name.trim(),
-                display_order
+                display_order,
+                icon_key
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -1530,15 +1571,17 @@ impl DbService {
         folder_id: i64,
         name: String,
         display_order: i64,
+        icon_key: Option<String>,
     ) -> Result<(), String> {
         if name.trim().is_empty() {
             return Err("Folder name cannot be empty".to_string());
         }
+        let icon_key = Self::normalize_mumble_folder_icon_key(icon_key)?;
         let conn = self.connection()?;
         let n = conn
             .execute(
-                "UPDATE MumbleFolders SET Name = ?1, DisplayOrder = ?2 WHERE Id = ?3",
-                params![name.trim(), display_order, folder_id],
+                "UPDATE MumbleFolders SET Name = ?1, DisplayOrder = ?2, IconKey = ?3 WHERE Id = ?4",
+                params![name.trim(), display_order, icon_key, folder_id],
             )
             .map_err(|e| e.to_string())?;
         if n == 0 {

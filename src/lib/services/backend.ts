@@ -146,15 +146,21 @@ export const backend = {
     serverGroupId: number,
     parentFolderId: number | null,
     name: string,
-    displayOrder: number
+    displayOrder: number,
+    iconKey: string | null = null
   ): Promise<number> {
     return invoke("create_mumble_folder", {
-      payload: { serverGroupId, parentFolderId, name, displayOrder }
+      payload: { serverGroupId, parentFolderId, name, displayOrder, iconKey }
     });
   },
-  updateMumbleFolder(folderId: number, name: string, displayOrder: number): Promise<void> {
+  updateMumbleFolder(
+    folderId: number,
+    name: string,
+    displayOrder: number,
+    iconKey: string | null
+  ): Promise<void> {
     return invoke("update_mumble_folder", {
-      payload: { folderId, name, displayOrder }
+      payload: { folderId, name, displayOrder, iconKey }
     });
   },
   deleteMumbleFolder(folderId: number): Promise<void> {

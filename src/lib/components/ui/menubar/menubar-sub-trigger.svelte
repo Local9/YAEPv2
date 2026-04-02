@@ -24,6 +24,6 @@
 	)}
 	{...restProps}
 >
-	<span class="min-w-0 flex-1 truncate text-left">{@render children?.()}</span>
+	<span class="flex min-w-0 flex-1 items-center gap-2 truncate text-left">{@render children?.()}</span>
 	<ChevronRightIcon class="cn-rtl-flip ml-auto size-4 shrink-0" />
 </MenubarPrimitive.SubTrigger>

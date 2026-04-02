@@ -645,6 +645,8 @@ struct CreateMumbleFolderPayload {
     parent_folder_id: Option<i64>,
     name: String,
     display_order: i64,
+    #[serde(default)]
+    icon_key: Option<String>,
 }
 
 #[tauri::command]
@@ -658,6 +660,7 @@ fn create_mumble_folder(
         payload.parent_folder_id,
         payload.name,
         payload.display_order,
+        payload.icon_key,
     )?;
     emit_mumble_tree_changed(&app_handle);
     Ok(id)
@@ -669,6 +672,8 @@ struct UpdateMumbleFolderPayload {
     folder_id: i64,
     name: String,
     display_order: i64,
+    #[serde(default)]
+    icon_key: Option<String>,
 }
 
 #[tauri::command]
@@ -679,7 +684,12 @@ fn update_mumble_folder(
 ) -> Result<(), String> {
     state
         .db
-        .update_mumble_folder(payload.folder_id, payload.name, payload.display_order)?;
+        .update_mumble_folder(
+            payload.folder_id,
+            payload.name,
+            payload.display_order,
+            payload.icon_key,
+        )?;
     emit_mumble_tree_changed(&app_handle);
     Ok(())
 }

@@ -71,6 +71,8 @@ export type MumbleFolder = {
   parentFolderId?: number | null;
   name: string;
   displayOrder: number;
+  /** Lucide icon slug; omit or null uses default (headphones) in the overlay. */
+  iconKey?: string | null;
 };
 
 export type MumbleLink = {
