@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS ThumbnailDefaultConfig (
   Opacity REAL NOT NULL DEFAULT 0.75,
   FocusBorderColor TEXT NOT NULL DEFAULT '#0078D4',
   FocusBorderThickness INTEGER NOT NULL DEFAULT 3,
+  DecloakFlashColor TEXT NOT NULL DEFAULT '#fcd34d',
+  DecloakFlashThickness INTEGER NOT NULL DEFAULT 2,
+  DecloakFlashDurationMs INTEGER NOT NULL DEFAULT 5000,
   ShowTitleOverlay INTEGER NOT NULL DEFAULT 1,
   FOREIGN KEY (ProfileId) REFERENCES Profile(Id) ON DELETE CASCADE
 );
@@ -36,8 +39,28 @@ CREATE TABLE IF NOT EXISTS ThumbnailSettings (
   Opacity REAL NOT NULL,
   FocusBorderColor TEXT NOT NULL DEFAULT '#0078D4',
   FocusBorderThickness INTEGER NOT NULL DEFAULT 3,
+  DecloakFlashColor TEXT NOT NULL DEFAULT '#fcd34d',
+  DecloakFlashThickness INTEGER NOT NULL DEFAULT 2,
+  DecloakFlashDurationMs INTEGER NOT NULL DEFAULT 5000,
   ShowTitleOverlay INTEGER NOT NULL DEFAULT 1,
   PRIMARY KEY (ProfileId, WindowTitle),
+  FOREIGN KEY (ProfileId) REFERENCES Profile(Id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS EveLogSettings (
+  ProfileId INTEGER PRIMARY KEY,
+  ChatLogsPath TEXT NOT NULL,
+  GameLogsPath TEXT NOT NULL,
+  FOREIGN KEY (ProfileId) REFERENCES Profile(Id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS EveChatChannels (
+  Id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ProfileId INTEGER NOT NULL,
+  ChannelType TEXT NOT NULL,
+  ChannelName TEXT NOT NULL,
+  BackgroundColor TEXT NOT NULL DEFAULT '#1f2937',
+  UNIQUE (ProfileId, ChannelType, ChannelName),
   FOREIGN KEY (ProfileId) REFERENCES Profile(Id) ON DELETE CASCADE
 );
 

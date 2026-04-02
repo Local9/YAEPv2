@@ -130,6 +130,11 @@
           Save settings
         </Button>
       </div>
+      <div class="pt-2">
+        <a class="text-sm text-primary underline underline-offset-2" href="/settings/eve-logs">
+          Open EVE log settings
+        </a>
+      </div>
     </div>
   </CardContent>
 </Card>

@@ -28,6 +28,9 @@ pub struct ThumbnailConfig {
     pub opacity: f64,
     pub focus_border_color: String,
     pub focus_border_thickness: i64,
+    pub decloak_flash_color: String,
+    pub decloak_flash_thickness: i64,
+    pub decloak_flash_duration_ms: i64,
     pub show_title_overlay: bool,
 }
 
@@ -36,6 +39,25 @@ pub struct ThumbnailConfig {
 pub struct ThumbnailSetting {
     pub window_title: String,
     pub config: ThumbnailConfig,
+    #[serde(default)]
+    pub character_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EveLogSettings {
+    pub chat_logs_path: String,
+    pub game_logs_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EveChatChannel {
+    pub id: i64,
+    pub profile_id: i64,
+    pub channel_type: String,
+    pub channel_name: String,
+    pub background_color: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +140,14 @@ fn default_widget_overlay_show_browser() -> bool {
     true
 }
 
+fn default_widget_overlay_show_fleet_motd() -> bool {
+    true
+}
+
+fn default_widget_overlay_show_intel_feed() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserQuickLink {
@@ -136,12 +166,22 @@ pub struct WidgetOverlaySettings {
     pub monitor_index: i64,
     #[serde(default = "default_widget_overlay_show_browser")]
     pub show_browser_widget: bool,
+    #[serde(default = "default_widget_overlay_show_fleet_motd")]
+    pub show_fleet_motd_widget: bool,
+    #[serde(default = "default_widget_overlay_show_intel_feed")]
+    pub show_intel_feed_widget: bool,
     /// When true (after hotkey/tray), non-pinned widgets are hidden; see `browser_always_displayed`.
     #[serde(default)]
     pub widgets_suppressed: bool,
     /// Browser widget stays visible while `widgets_suppressed` is true.
     #[serde(default)]
     pub browser_always_displayed: bool,
+    /// Fleet MOTD widget stays visible while `widgets_suppressed` is true.
+    #[serde(default)]
+    pub fleet_motd_always_displayed: bool,
+    /// Intel feed widget stays visible while `widgets_suppressed` is true.
+    #[serde(default)]
+    pub intel_feed_always_displayed: bool,
     /// Global hotkey string (e.g. `Ctrl+Shift+W`) to toggle `widgets_suppressed`.
     #[serde(default)]
     pub toggle_hotkey: String,
@@ -181,6 +221,30 @@ fn default_browser_quick_links_vec() -> Vec<BrowserQuickLink> {
 pub struct WidgetOverlayLayout {
     #[serde(default)]
     pub browser: WidgetBrowserFrame,
+    #[serde(default)]
+    pub fleet_motd: WidgetFrame,
+    #[serde(default)]
+    pub intel_feed: WidgetFrame,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetFrame {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl Default for WidgetFrame {
+    fn default() -> Self {
+        Self {
+            x: 24.0,
+            y: 24.0,
+            width: 420.0,
+            height: 180.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -255,4 +319,34 @@ pub struct GridLayoutPreviewItem {
     pub y: i64,
     pub width: i64,
     pub height: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EveDetectedProfile {
+    pub server_name: String,
+    pub profile_name: String,
+    pub full_path: String,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EveProfileCharacter {
+    pub character_id: String,
+    pub file_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EveProfileUser {
+    pub user_id: String,
+    pub file_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EveProfileSettingsSources {
+    pub characters: Vec<EveProfileCharacter>,
+    pub users: Vec<EveProfileUser>,
 }

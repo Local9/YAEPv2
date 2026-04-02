@@ -212,8 +212,8 @@
     flex-shrink: 0;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px;
-    min-height: 40px;
+    padding: 5px 8px;
+    min-height: 30px;
     box-sizing: border-box;
     background: var(--muted);
     color: var(--foreground);
@@ -238,13 +238,13 @@
   }
 
   .widget-drag-handle :global(svg) {
-    width: 1rem;
-    height: 1rem;
+    width: 0.875rem;
+    height: 0.875rem;
   }
 
   .widget-title-text {
     flex-shrink: 0;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.01em;
     color: var(--foreground);
@@ -262,8 +262,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
     padding: 0;
     border-radius: 6px;
     border: 1px solid var(--border);
@@ -284,8 +284,8 @@
   }
 
   .widget-pin :global(.widget-pin-icon) {
-    width: 1rem;
-    height: 1rem;
+    width: 0.875rem;
+    height: 0.875rem;
   }
 
   .widget-toolbar-slot {

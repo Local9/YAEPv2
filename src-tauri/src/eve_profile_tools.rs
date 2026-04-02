@@ -7,6 +7,8 @@ use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 use zip::ZipWriter;
 
+use crate::models::{EveDetectedProfile, EveProfileCharacter, EveProfileSettingsSources, EveProfileUser};
+
 #[derive(Default)]
 pub struct EveProfileToolsService;
 
@@ -28,6 +30,17 @@ impl EveProfileToolsService {
     }
 
     pub fn list_profiles(&self) -> Result<Vec<String>, String> {
+        let mut out: Vec<String> = self
+            .list_detected_profiles()?
+            .into_iter()
+            .map(|p| p.profile_name)
+            .collect();
+        out.sort();
+        out.dedup();
+        Ok(out)
+    }
+
+    pub fn list_detected_profiles(&self) -> Result<Vec<EveDetectedProfile>, String> {
         let mut out = Vec::new();
         let base = self.eve_local_base_dir()?;
         if !base.exists() {
@@ -36,25 +49,42 @@ impl EveProfileToolsService {
 
         for server_dir in fs::read_dir(base).map_err(|e| e.to_string())? {
             let server_dir = server_dir.map_err(|e| e.to_string())?;
-            if !server_dir.path().is_dir() {
+            let server_path = server_dir.path();
+            if !server_path.is_dir() {
                 continue;
             }
-            for entry in fs::read_dir(server_dir.path()).map_err(|e| e.to_string())? {
+            let server_name = server_dir.file_name().to_string_lossy().to_string();
+            if server_name.trim().is_empty() {
+                continue;
+            }
+
+            for entry in fs::read_dir(server_path).map_err(|e| e.to_string())? {
                 let entry = entry.map_err(|e| e.to_string())?;
-                let name = entry.file_name().to_string_lossy().to_string();
                 if !entry.path().is_dir() {
                     continue;
                 }
-                if let Some(profile_name) = name.strip_prefix("settings_") {
-                    out.push(profile_name.to_string());
-                } else if name.eq_ignore_ascii_case("Default") {
-                    out.push("Default".to_string());
+                let folder_name = entry.file_name().to_string_lossy().to_string();
+                let Some(profile_name) = folder_name.strip_prefix("settings_") else {
+                    continue;
+                };
+                if profile_name.trim().is_empty() {
+                    continue;
                 }
+                out.push(EveDetectedProfile {
+                    server_name: server_name.clone(),
+                    profile_name: profile_name.to_string(),
+                    full_path: entry.path().to_string_lossy().to_string(),
+                    is_default: profile_name.eq_ignore_ascii_case("default"),
+                });
             }
         }
 
-        out.sort();
-        out.dedup();
+        out.sort_by(|a, b| {
+            a.server_name
+                .cmp(&b.server_name)
+                .then_with(|| a.profile_name.cmp(&b.profile_name))
+                .then_with(|| a.full_path.cmp(&b.full_path))
+        });
         Ok(out)
     }
 
@@ -90,6 +120,107 @@ impl EveProfileToolsService {
             }
             let destination = target.join(file_name);
             fs::copy(entry.path(), destination).map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }
+
+    pub fn copy_character_files_on_server(
+        &self,
+        server_name: String,
+        source_profile_name: String,
+        target_profile_name: String,
+    ) -> Result<(), String> {
+        self.ensure_eve_not_running()?;
+        let source = self.resolve_profile_dir(&server_name, &source_profile_name)?;
+        let target = self.resolve_profile_dir(&server_name, &target_profile_name)?;
+
+        for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            let is_copy_file = file_name.starts_with("core_char_") || file_name.starts_with("core_user_");
+            if !is_copy_file || !entry.path().is_file() {
+                continue;
+            }
+            let destination = target.join(file_name);
+            fs::copy(entry.path(), destination).map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }
+
+    pub fn copy_profile_on_server(
+        &self,
+        server_name: String,
+        source_profile_name: String,
+        new_profile_name: String,
+    ) -> Result<(), String> {
+        self.ensure_eve_not_running()?;
+        let source = self.resolve_profile_dir(&server_name, &source_profile_name)?;
+        let source_parent = source
+            .parent()
+            .ok_or_else(|| "Invalid source profile path".to_string())?;
+        let destination = source_parent.join(format!("settings_{}", new_profile_name.trim()));
+        if destination.exists() {
+            return Err("Destination profile already exists".to_string());
+        }
+        copy_dir_recursive(&source, &destination)
+    }
+
+    pub fn delete_profile_on_server(
+        &self,
+        server_name: String,
+        profile_name: String,
+    ) -> Result<(), String> {
+        self.ensure_eve_not_running()?;
+        let profile_dir = self.resolve_profile_dir(&server_name, &profile_name)?;
+        fs::remove_dir_all(profile_dir).map_err(|e| e.to_string())
+    }
+
+    pub fn get_profile_settings_sources(
+        &self,
+        server_name: String,
+        profile_name: String,
+    ) -> Result<EveProfileSettingsSources, String> {
+        let profile_dir = self.resolve_profile_dir(&server_name, &profile_name)?;
+        let mut characters = self.get_profile_characters(&profile_dir)?;
+        let mut users = self.get_profile_users(&profile_dir)?;
+        characters.sort_by(|a, b| a.character_id.cmp(&b.character_id));
+        users.sort_by(|a, b| a.user_id.cmp(&b.user_id));
+        Ok(EveProfileSettingsSources { characters, users })
+    }
+
+    pub fn copy_profile_settings_from_sources(
+        &self,
+        server_name: String,
+        profile_name: String,
+        source_character_id: String,
+        source_user_id: String,
+    ) -> Result<(), String> {
+        self.ensure_eve_not_running()?;
+        let profile_dir = self.resolve_profile_dir(&server_name, &profile_name)?;
+        let characters = self.get_profile_characters(&profile_dir)?;
+        let users = self.get_profile_users(&profile_dir)?;
+
+        let source_character = characters
+            .iter()
+            .find(|c| c.character_id == source_character_id)
+            .ok_or_else(|| "Source character file not found".to_string())?;
+        let source_user = users
+            .iter()
+            .find(|u| u.user_id == source_user_id)
+            .ok_or_else(|| "Source user file not found".to_string())?;
+
+        for target in &characters {
+            if target.file_path != source_character.file_path {
+                fs::copy(&source_character.file_path, &target.file_path).map_err(|e| e.to_string())?;
+            }
+        }
+
+        for target in &users {
+            if target.file_path != source_user.file_path {
+                fs::copy(&source_user.file_path, &target.file_path).map_err(|e| e.to_string())?;
+            }
         }
 
         Ok(())
@@ -175,6 +306,24 @@ impl EveProfileToolsService {
         Ok(PathBuf::from(local_appdata).join("CCP").join("EVE"))
     }
 
+    fn resolve_profile_dir(&self, server_name: &str, profile_name: &str) -> Result<PathBuf, String> {
+        let server = server_name.trim();
+        let profile = profile_name.trim();
+        if server.is_empty() || profile.is_empty() {
+            return Err("Server and profile names are required".to_string());
+        }
+        let base = self.eve_local_base_dir()?;
+        let server_dir = base.join(server);
+        if !server_dir.exists() || !server_dir.is_dir() {
+            return Err("Server folder not found".to_string());
+        }
+        let profile_dir = server_dir.join(format!("settings_{profile}"));
+        if !profile_dir.exists() || !profile_dir.is_dir() {
+            return Err("Profile folder not found".to_string());
+        }
+        Ok(profile_dir)
+    }
+
     fn ensure_eve_not_running(&self) -> Result<(), String> {
         let mut system = System::new_all();
         system.refresh_processes(ProcessesToUpdate::All, true);
@@ -255,6 +404,64 @@ impl EveProfileToolsService {
 
         Ok(output)
     }
+}
+
+impl EveProfileToolsService {
+    fn get_profile_characters(&self, profile_dir: &Path) -> Result<Vec<EveProfileCharacter>, String> {
+        let mut out = Vec::new();
+        for entry in fs::read_dir(profile_dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.path().is_file() {
+                continue;
+            }
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            let Some(id) = extract_numeric_id(&file_name, "core_char_") else {
+                continue;
+            };
+            out.push(EveProfileCharacter {
+                character_id: id,
+                file_path: entry.path().to_string_lossy().to_string(),
+            });
+        }
+        Ok(out)
+    }
+
+    fn get_profile_users(&self, profile_dir: &Path) -> Result<Vec<EveProfileUser>, String> {
+        let mut out = Vec::new();
+        for entry in fs::read_dir(profile_dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.path().is_file() {
+                continue;
+            }
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            let Some(id) = extract_numeric_id(&file_name, "core_user_") else {
+                continue;
+            };
+            out.push(EveProfileUser {
+                user_id: id,
+                file_path: entry.path().to_string_lossy().to_string(),
+            });
+        }
+        Ok(out)
+    }
+}
+
+fn extract_numeric_id(file_name: &str, prefix: &str) -> Option<String> {
+    if !file_name.starts_with(prefix) {
+        return None;
+    }
+    let mut id_part = file_name[prefix.len()..].to_string();
+    if let Some(last_dot) = id_part.rfind('.') {
+        id_part = id_part[..last_dot].to_string();
+    }
+    let id = id_part.trim();
+    if id.is_empty() {
+        return None;
+    }
+    if !id.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+    Some(id.to_string())
 }
 
 fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), String> {

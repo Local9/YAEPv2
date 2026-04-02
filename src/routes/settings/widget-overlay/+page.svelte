@@ -114,6 +114,10 @@
       browserDefaultUrl,
       widgetsSuppressed: loaded.widgetsSuppressed ?? false,
       browserAlwaysDisplayed: loaded.browserAlwaysDisplayed ?? false,
+      showFleetMotdWidget: loaded.showFleetMotdWidget ?? true,
+      showIntelFeedWidget: loaded.showIntelFeedWidget ?? true,
+      fleetMotdAlwaysDisplayed: loaded.fleetMotdAlwaysDisplayed ?? false,
+      intelFeedAlwaysDisplayed: loaded.intelFeedAlwaysDisplayed ?? false,
       toggleHotkey: loaded.toggleHotkey ?? ""
     };
   }
@@ -210,6 +214,30 @@
   async function onBrowserAlwaysDisplayedChange(v: boolean | "indeterminate") {
     if (!settings || v === "indeterminate") return;
     settings = { ...settings, browserAlwaysDisplayed: v === true };
+    await persistToBackend({ successToast: false });
+  }
+
+  async function onFleetMotdWidgetEnabledChange(v: boolean | "indeterminate") {
+    if (!settings || v === "indeterminate") return;
+    settings = { ...settings, showFleetMotdWidget: v === true };
+    await persistToBackend({ successToast: false });
+  }
+
+  async function onFleetMotdAlwaysDisplayedChange(v: boolean | "indeterminate") {
+    if (!settings || v === "indeterminate") return;
+    settings = { ...settings, fleetMotdAlwaysDisplayed: v === true };
+    await persistToBackend({ successToast: false });
+  }
+
+  async function onIntelFeedWidgetEnabledChange(v: boolean | "indeterminate") {
+    if (!settings || v === "indeterminate") return;
+    settings = { ...settings, showIntelFeedWidget: v === true };
+    await persistToBackend({ successToast: false });
+  }
+
+  async function onIntelFeedAlwaysDisplayedChange(v: boolean | "indeterminate") {
+    if (!settings || v === "indeterminate") return;
+    settings = { ...settings, intelFeedAlwaysDisplayed: v === true };
     await persistToBackend({ successToast: false });
   }
 
@@ -455,6 +483,48 @@
                       >
                         Edit quick links…
                       </Button>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell class="align-middle">
+                      <Checkbox
+                        class="cursor-pointer"
+                        checked={settings.showFleetMotdWidget}
+                        onCheckedChange={(v) => void onFleetMotdWidgetEnabledChange(v)}
+                      />
+                    </TableCell>
+                    <TableCell class="align-middle">
+                      <Checkbox
+                        class="cursor-pointer"
+                        checked={settings.fleetMotdAlwaysDisplayed}
+                        disabled={!settings.showFleetMotdWidget}
+                        onCheckedChange={(v) => void onFleetMotdAlwaysDisplayedChange(v)}
+                      />
+                    </TableCell>
+                    <TableCell class="align-middle font-medium">Fleet MOTD</TableCell>
+                    <TableCell class="align-middle text-muted-foreground">
+                      Built-in widget
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell class="align-middle">
+                      <Checkbox
+                        class="cursor-pointer"
+                        checked={settings.showIntelFeedWidget}
+                        onCheckedChange={(v) => void onIntelFeedWidgetEnabledChange(v)}
+                      />
+                    </TableCell>
+                    <TableCell class="align-middle">
+                      <Checkbox
+                        class="cursor-pointer"
+                        checked={settings.intelFeedAlwaysDisplayed}
+                        disabled={!settings.showIntelFeedWidget}
+                        onCheckedChange={(v) => void onIntelFeedAlwaysDisplayedChange(v)}
+                      />
+                    </TableCell>
+                    <TableCell class="align-middle font-medium">Intel Feed</TableCell>
+                    <TableCell class="align-middle text-muted-foreground">
+                      Shows last 50 intel lines (newest at bottom)
                     </TableCell>
                   </TableRow>
                 </TableBody>

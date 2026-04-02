@@ -2,7 +2,6 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { ModeWatcher, mode, setMode } from "mode-watcher";
-  import { emit } from "@tauri-apps/api/event";
   import { page } from "$app/state";
   import type { LayoutProps } from "./$types";
   import { backend } from "$services/backend";
@@ -43,6 +42,7 @@
     { href: "/mumble-links", label: "Mumble Links", Icon: RadioIcon },
     { href: "/eve-profiles", label: "EVE Profiles", Icon: Gamepad2Icon },
     { href: "/settings", label: "Settings", Icon: SettingsIcon, exact: true },
+    { href: "/settings/eve-logs", label: "EVE Logs", Icon: SettingsIcon },
     { href: "/settings/widget-overlay", label: "Widget overlay", Icon: LayoutPanelIcon }
   ];
 
@@ -89,7 +89,6 @@
     if (theme === lastSyncedTheme) return;
     lastSyncedTheme = theme;
     void backend.setAppSetting("Theme", theme).catch(() => {});
-    void emit("app-theme-changed", { theme }).catch(() => {});
   });
 </script>
 

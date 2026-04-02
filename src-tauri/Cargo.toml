@@ -28,6 +28,7 @@ ureq = { version = "3.3", default-features = false, features = ["json", "rustls"
 tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
 zip = "8.4"
+regex = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # Keep 0.61.x in sync with Tauri's `windows` dependency; 0.62 diverges HWND types from tauri-runtime.

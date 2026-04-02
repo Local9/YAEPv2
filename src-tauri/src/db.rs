@@ -4,12 +4,30 @@ use std::path::PathBuf;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::models::{
-    ClientGroup, ClientGroupDetail, ClientGroupMember, DrawerSettings, MumbleLink,
-    MumbleLinksOverlaySettings, MumbleServerGroup, Profile, ThumbnailConfig, ThumbnailSetting,
+    ClientGroup, ClientGroupDetail, ClientGroupMember, DrawerSettings, EveChatChannel,
+    EveLogSettings, MumbleLink, MumbleLinksOverlaySettings, MumbleServerGroup, Profile,
+    ThumbnailConfig, ThumbnailSetting,
 };
 
 pub struct DbService {
     db_path: PathBuf,
+}
+
+fn normalize_color_hex(input: Option<&str>) -> String {
+    let default_color = "#1f2937".to_string();
+    let Some(raw) = input else {
+        return default_color;
+    };
+    let trimmed = raw.trim();
+    let value = if let Some(v) = trimmed.strip_prefix('#') {
+        v
+    } else {
+        trimmed
+    };
+    if value.len() != 6 || !value.chars().all(|c| c.is_ascii_hexdigit()) {
+        return default_color;
+    }
+    format!("#{}", value.to_ascii_lowercase())
 }
 
 impl DbService {
@@ -42,7 +60,138 @@ impl DbService {
             .map_err(|e| e.to_string())?;
         conn.execute_batch(include_str!("../sql/mumble_and_groups.sql"))
             .map_err(|e| e.to_string())?;
+        self.ensure_thumbnail_character_id_column(&conn)?;
+        self.ensure_thumbnail_decloak_flash_columns(&conn)?;
+        self.ensure_eve_chat_channel_background_color_column(&conn)?;
         self.bootstrap_defaults(&conn)
+    }
+
+    fn ensure_thumbnail_character_id_column(&self, conn: &Connection) -> Result<(), String> {
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(ThumbnailSettings)")
+            .map_err(|e| e.to_string())?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?;
+        for col in columns {
+            if col.map_err(|e| e.to_string())?.eq_ignore_ascii_case("CharacterId") {
+                return Ok(());
+            }
+        }
+        conn.execute("ALTER TABLE ThumbnailSettings ADD COLUMN CharacterId INTEGER NULL", [])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn ensure_eve_chat_channel_background_color_column(
+        &self,
+        conn: &Connection,
+    ) -> Result<(), String> {
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(EveChatChannels)")
+            .map_err(|e| e.to_string())?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?;
+        for col in columns {
+            if col
+                .map_err(|e| e.to_string())?
+                .eq_ignore_ascii_case("BackgroundColor")
+            {
+                return Ok(());
+            }
+        }
+        conn.execute(
+            "ALTER TABLE EveChatChannels ADD COLUMN BackgroundColor TEXT NOT NULL DEFAULT '#1f2937'",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn ensure_thumbnail_decloak_flash_columns(&self, conn: &Connection) -> Result<(), String> {
+        let mut default_stmt = conn
+            .prepare("PRAGMA table_info(ThumbnailDefaultConfig)")
+            .map_err(|e| e.to_string())?;
+        let default_columns = default_stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?;
+        let mut has_default_color = false;
+        let mut has_default_thickness = false;
+        let mut has_default_duration = false;
+        for col in default_columns {
+            let col = col.map_err(|e| e.to_string())?;
+            if col.eq_ignore_ascii_case("DecloakFlashColor") {
+                has_default_color = true;
+            } else if col.eq_ignore_ascii_case("DecloakFlashThickness") {
+                has_default_thickness = true;
+            } else if col.eq_ignore_ascii_case("DecloakFlashDurationMs") {
+                has_default_duration = true;
+            }
+        }
+        if !has_default_color {
+            conn.execute(
+                "ALTER TABLE ThumbnailDefaultConfig ADD COLUMN DecloakFlashColor TEXT NOT NULL DEFAULT '#fcd34d'",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        if !has_default_thickness {
+            conn.execute(
+                "ALTER TABLE ThumbnailDefaultConfig ADD COLUMN DecloakFlashThickness INTEGER NOT NULL DEFAULT 2",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        if !has_default_duration {
+            conn.execute(
+                "ALTER TABLE ThumbnailDefaultConfig ADD COLUMN DecloakFlashDurationMs INTEGER NOT NULL DEFAULT 5000",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+
+        let mut settings_stmt = conn
+            .prepare("PRAGMA table_info(ThumbnailSettings)")
+            .map_err(|e| e.to_string())?;
+        let settings_columns = settings_stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?;
+        let mut has_settings_color = false;
+        let mut has_settings_thickness = false;
+        let mut has_settings_duration = false;
+        for col in settings_columns {
+            let col = col.map_err(|e| e.to_string())?;
+            if col.eq_ignore_ascii_case("DecloakFlashColor") {
+                has_settings_color = true;
+            } else if col.eq_ignore_ascii_case("DecloakFlashThickness") {
+                has_settings_thickness = true;
+            } else if col.eq_ignore_ascii_case("DecloakFlashDurationMs") {
+                has_settings_duration = true;
+            }
+        }
+        if !has_settings_color {
+            conn.execute(
+                "ALTER TABLE ThumbnailSettings ADD COLUMN DecloakFlashColor TEXT NOT NULL DEFAULT '#fcd34d'",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        if !has_settings_thickness {
+            conn.execute(
+                "ALTER TABLE ThumbnailSettings ADD COLUMN DecloakFlashThickness INTEGER NOT NULL DEFAULT 2",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        if !has_settings_duration {
+            conn.execute(
+                "ALTER TABLE ThumbnailSettings ADD COLUMN DecloakFlashDurationMs INTEGER NOT NULL DEFAULT 5000",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     fn bootstrap_defaults(&self, conn: &Connection) -> Result<(), String> {
@@ -62,8 +211,8 @@ impl DbService {
 
         conn.execute(
             "INSERT INTO ThumbnailDefaultConfig
-            (ProfileId, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay)
-            VALUES (?1, 400, 300, 100, 100, 0.75, '#0078D4', 3, 1)",
+            (ProfileId, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, DecloakFlashColor, DecloakFlashThickness, DecloakFlashDurationMs, ShowTitleOverlay)
+            VALUES (?1, 400, 300, 100, 100, 0.75, '#0078D4', 3, '#fcd34d', 2, 5000, 1)",
             [profile_id],
         )
         .map_err(|e| e.to_string())?;
@@ -125,8 +274,8 @@ impl DbService {
         let profile_id = conn.last_insert_rowid();
         conn.execute(
             "INSERT OR IGNORE INTO ThumbnailDefaultConfig
-            (ProfileId, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay)
-            VALUES (?1, 400, 300, 100, 100, 0.75, '#0078D4', 3, 1)",
+            (ProfileId, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, DecloakFlashColor, DecloakFlashThickness, DecloakFlashDurationMs, ShowTitleOverlay)
+            VALUES (?1, 400, 300, 100, 100, 0.75, '#0078D4', 3, '#fcd34d', 2, 5000, 1)",
             [profile_id],
         )
         .map_err(|e| e.to_string())?;
@@ -233,6 +382,168 @@ impl DbService {
         .flatten()
     }
 
+    fn default_chat_logs_path() -> String {
+        let user_profile = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_else(|_| ".".to_string());
+        format!("{user_profile}\\Documents\\EVE\\logs\\Chatlogs")
+    }
+
+    fn default_game_logs_path() -> String {
+        let user_profile = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_else(|_| ".".to_string());
+        format!("{user_profile}\\Documents\\EVE\\logs\\Gamelogs")
+    }
+
+    fn normalize_required_path(value: &str, label: &str) -> Result<String, String> {
+        let normalized = value.trim().replace('/', "\\");
+        if normalized.is_empty() {
+            return Err(format!("{label} cannot be empty"));
+        }
+        Ok(normalized)
+    }
+
+    pub fn get_eve_log_settings(&self, profile_id: i64) -> Result<EveLogSettings, String> {
+        let conn = self.connection()?;
+        let row: Option<EveLogSettings> = conn
+            .query_row(
+                "SELECT ChatLogsPath, GameLogsPath FROM EveLogSettings WHERE ProfileId = ?1",
+                [profile_id],
+                |row| {
+                    Ok(EveLogSettings {
+                        chat_logs_path: row.get(0)?,
+                        game_logs_path: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        Ok(row.unwrap_or(EveLogSettings {
+            chat_logs_path: Self::default_chat_logs_path(),
+            game_logs_path: Self::default_game_logs_path(),
+        }))
+    }
+
+    pub fn save_eve_log_settings(&self, profile_id: i64, settings: EveLogSettings) -> Result<(), String> {
+        let conn = self.connection()?;
+        let chat_logs_path = Self::normalize_required_path(&settings.chat_logs_path, "Chat logs path")?;
+        let game_logs_path = Self::normalize_required_path(&settings.game_logs_path, "Game logs path")?;
+        conn.execute(
+            "INSERT INTO EveLogSettings (ProfileId, ChatLogsPath, GameLogsPath)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(ProfileId) DO UPDATE SET
+               ChatLogsPath = excluded.ChatLogsPath,
+               GameLogsPath = excluded.GameLogsPath",
+            params![profile_id, chat_logs_path, game_logs_path],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn list_eve_chat_channels(&self, profile_id: i64) -> Result<Vec<EveChatChannel>, String> {
+        let conn = self.connection()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT Id, ProfileId, ChannelType, ChannelName
+                 , BackgroundColor
+                 FROM EveChatChannels
+                 WHERE ProfileId = ?1
+                 ORDER BY ChannelType, ChannelName",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([profile_id], |row| {
+                Ok(EveChatChannel {
+                    id: row.get(0)?,
+                    profile_id: row.get(1)?,
+                    channel_type: row.get(2)?,
+                    channel_name: row.get(3)?,
+                    background_color: row.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    pub fn add_eve_chat_channel(
+        &self,
+        profile_id: i64,
+        channel_type: String,
+        channel_name: String,
+        background_color: Option<String>,
+    ) -> Result<EveChatChannel, String> {
+        let conn = self.connection()?;
+        let normalized_type = channel_type.trim();
+        if normalized_type != "FleetBoost" && normalized_type != "Intel" {
+            return Err("Channel type must be FleetBoost or Intel".to_string());
+        }
+        let normalized_name = channel_name.trim();
+        if normalized_name.is_empty() {
+            return Err("Channel name cannot be empty".to_string());
+        }
+        let duplicate_exists: Option<i64> = conn
+            .query_row(
+                "SELECT Id
+                 FROM EveChatChannels
+                 WHERE ProfileId = ?1 AND lower(trim(ChannelName)) = lower(trim(?2))
+                 LIMIT 1",
+                params![profile_id, normalized_name],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if duplicate_exists.is_some() {
+            return Err("Channel name already exists".to_string());
+        }
+        let normalized_background_color = normalize_color_hex(background_color.as_deref());
+        conn.execute(
+            "INSERT INTO EveChatChannels (ProfileId, ChannelType, ChannelName, BackgroundColor) VALUES (?1, ?2, ?3, ?4)",
+            params![profile_id, normalized_type, normalized_name, normalized_background_color],
+        )
+        .map_err(|e| e.to_string())?;
+        let id = conn.last_insert_rowid();
+        Ok(EveChatChannel {
+            id,
+            profile_id,
+            channel_type: normalized_type.to_string(),
+            channel_name: normalized_name.to_string(),
+            background_color: normalized_background_color,
+        })
+    }
+
+    pub fn update_eve_chat_channel_color(
+        &self,
+        profile_id: i64,
+        channel_id: i64,
+        background_color: String,
+    ) -> Result<(), String> {
+        let conn = self.connection()?;
+        let normalized = normalize_color_hex(Some(&background_color));
+        conn.execute(
+            "UPDATE EveChatChannels
+             SET BackgroundColor = ?3
+             WHERE ProfileId = ?1 AND Id = ?2",
+            params![profile_id, channel_id, normalized],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn remove_eve_chat_channel(&self, profile_id: i64, channel_id: i64) -> Result<(), String> {
+        let conn = self.connection()?;
+        conn.execute(
+            "DELETE FROM EveChatChannels WHERE ProfileId = ?1 AND Id = ?2",
+            params![profile_id, channel_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn get_processes_to_preview(&self, profile_id: i64) -> Result<Vec<String>, String> {
         let conn = self.connection()?;
         let mut stmt = conn
@@ -290,7 +601,7 @@ impl DbService {
     pub fn get_thumbnail_default_config(&self, profile_id: i64) -> Result<ThumbnailConfig, String> {
         let conn = self.connection()?;
         conn.query_row(
-            "SELECT Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay
+            "SELECT Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, DecloakFlashColor, DecloakFlashThickness, DecloakFlashDurationMs, ShowTitleOverlay
              FROM ThumbnailDefaultConfig WHERE ProfileId = ?1",
             [profile_id],
             |row| {
@@ -302,7 +613,10 @@ impl DbService {
                     opacity: row.get(4)?,
                     focus_border_color: row.get(5)?,
                     focus_border_thickness: row.get(6)?,
-                    show_title_overlay: row.get::<_, i64>(7)? == 1,
+                    decloak_flash_color: row.get(7)?,
+                    decloak_flash_thickness: row.get(8)?,
+                    decloak_flash_duration_ms: row.get(9)?,
+                    show_title_overlay: row.get::<_, i64>(10)? == 1,
                 })
             },
         )
@@ -317,8 +631,8 @@ impl DbService {
         let conn = self.connection()?;
         conn.execute(
             "INSERT INTO ThumbnailDefaultConfig
-            (ProfileId, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            (ProfileId, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, DecloakFlashColor, DecloakFlashThickness, DecloakFlashDurationMs, ShowTitleOverlay)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
             ON CONFLICT(ProfileId) DO UPDATE SET
               Width=excluded.Width,
               Height=excluded.Height,
@@ -327,6 +641,9 @@ impl DbService {
               Opacity=excluded.Opacity,
               FocusBorderColor=excluded.FocusBorderColor,
               FocusBorderThickness=excluded.FocusBorderThickness,
+              DecloakFlashColor=excluded.DecloakFlashColor,
+              DecloakFlashThickness=excluded.DecloakFlashThickness,
+              DecloakFlashDurationMs=excluded.DecloakFlashDurationMs,
               ShowTitleOverlay=excluded.ShowTitleOverlay",
             params![
                 profile_id,
@@ -337,6 +654,9 @@ impl DbService {
                 config.opacity,
                 config.focus_border_color,
                 config.focus_border_thickness,
+                config.decloak_flash_color,
+                config.decloak_flash_thickness,
+                config.decloak_flash_duration_ms,
                 if config.show_title_overlay { 1 } else { 0 }
             ],
         )
@@ -349,7 +669,10 @@ impl DbService {
                  Opacity = ?4,
                  FocusBorderColor = ?5,
                  FocusBorderThickness = ?6,
-                 ShowTitleOverlay = ?7
+                 DecloakFlashColor = ?7,
+                 DecloakFlashThickness = ?8,
+                 DecloakFlashDurationMs = ?9,
+                 ShowTitleOverlay = ?10
              WHERE ProfileId = ?1",
             params![
                 profile_id,
@@ -358,6 +681,9 @@ impl DbService {
                 config.opacity,
                 config.focus_border_color,
                 config.focus_border_thickness,
+                config.decloak_flash_color,
+                config.decloak_flash_thickness,
+                config.decloak_flash_duration_ms,
                 if config.show_title_overlay { 1 } else { 0 }
             ],
         )
@@ -376,6 +702,7 @@ impl DbService {
         let row = conn
             .query_row(
                 "SELECT Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay
+                 , DecloakFlashColor, DecloakFlashThickness, DecloakFlashDurationMs
                  FROM ThumbnailSettings WHERE ProfileId = ?1 AND WindowTitle = ?2",
                 params![profile_id, window_title],
                 |row| {
@@ -388,6 +715,9 @@ impl DbService {
                         focus_border_color: row.get(5)?,
                         focus_border_thickness: row.get(6)?,
                         show_title_overlay: row.get::<_, i64>(7)? == 1,
+                        decloak_flash_color: row.get(8)?,
+                        decloak_flash_thickness: row.get(9)?,
+                        decloak_flash_duration_ms: row.get(10)?,
                     })
                 },
             )
@@ -403,7 +733,8 @@ impl DbService {
         let conn = self.connection()?;
         let mut stmt = conn
             .prepare(
-                "SELECT WindowTitle, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay
+                "SELECT WindowTitle, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay, CharacterId
+                 , DecloakFlashColor, DecloakFlashThickness, DecloakFlashDurationMs
                  FROM ThumbnailSettings WHERE ProfileId = ?1 ORDER BY WindowTitle",
             )
             .map_err(|e| e.to_string())?;
@@ -420,7 +751,11 @@ impl DbService {
                         focus_border_color: row.get(6)?,
                         focus_border_thickness: row.get(7)?,
                         show_title_overlay: row.get::<_, i64>(8)? == 1,
+                        decloak_flash_color: row.get(10)?,
+                        decloak_flash_thickness: row.get(11)?,
+                        decloak_flash_duration_ms: row.get(12)?,
                     },
+                    character_id: row.get(9)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -436,6 +771,7 @@ impl DbService {
         profile_id: i64,
         window_title: String,
         config: ThumbnailConfig,
+        character_id: Option<i64>,
     ) -> Result<(), String> {
         let conn = self.connection()?;
         let was_new_thumbnail: bool = conn
@@ -449,12 +785,15 @@ impl DbService {
             .is_none();
         conn.execute(
             "INSERT INTO ThumbnailSettings
-             (ProfileId, WindowTitle, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             (ProfileId, WindowTitle, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, DecloakFlashColor, DecloakFlashThickness, DecloakFlashDurationMs, ShowTitleOverlay, CharacterId)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(ProfileId, WindowTitle) DO UPDATE SET
                Width=excluded.Width, Height=excluded.Height, X=excluded.X, Y=excluded.Y,
                Opacity=excluded.Opacity, FocusBorderColor=excluded.FocusBorderColor,
-               FocusBorderThickness=excluded.FocusBorderThickness, ShowTitleOverlay=excluded.ShowTitleOverlay",
+               FocusBorderThickness=excluded.FocusBorderThickness,
+               DecloakFlashColor=excluded.DecloakFlashColor, DecloakFlashThickness=excluded.DecloakFlashThickness,
+               DecloakFlashDurationMs=excluded.DecloakFlashDurationMs, ShowTitleOverlay=excluded.ShowTitleOverlay,
+               CharacterId=COALESCE(excluded.CharacterId, ThumbnailSettings.CharacterId)",
             params![
                 profile_id,
                 &window_title,
@@ -465,7 +804,11 @@ impl DbService {
                 config.opacity,
                 config.focus_border_color,
                 config.focus_border_thickness,
-                if config.show_title_overlay { 1 } else { 0 }
+                config.decloak_flash_color,
+                config.decloak_flash_thickness,
+                config.decloak_flash_duration_ms,
+                if config.show_title_overlay { 1 } else { 0 },
+                character_id
             ],
         )
         .map_err(|e| e.to_string())?;

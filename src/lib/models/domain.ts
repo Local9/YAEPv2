@@ -14,12 +14,31 @@ export type ThumbnailConfig = {
   opacity: number;
   focusBorderColor: string;
   focusBorderThickness: number;
+  decloakFlashColor: string;
+  decloakFlashThickness: number;
+  decloakFlashDurationMs: number;
   showTitleOverlay: boolean;
 };
 
 export type ThumbnailSetting = {
   windowTitle: string;
   config: ThumbnailConfig;
+  characterId?: number | null;
+};
+
+export type EveLogSettings = {
+  chatLogsPath: string;
+  gameLogsPath: string;
+};
+
+export type EveChatChannelType = "FleetBoost" | "Intel";
+
+export type EveChatChannel = {
+  id: number;
+  profileId: number;
+  channelType: EveChatChannelType;
+  channelName: string;
+  backgroundColor: string;
 };
 
 export type ClientGroup = {
@@ -94,6 +113,8 @@ export type WidgetBrowserFrame = WidgetLayoutRect & {
 
 export type WidgetOverlayLayout = {
   browser: WidgetBrowserFrame;
+  fleetMotd: WidgetLayoutRect;
+  intelFeed: WidgetLayoutRect;
 };
 
 export type BrowserQuickLink = {
@@ -115,10 +136,16 @@ export type WidgetOverlaySettings = {
   visible: boolean;
   monitorIndex: number;
   showBrowserWidget: boolean;
+  showFleetMotdWidget: boolean;
+  showIntelFeedWidget: boolean;
   /** When true, non-pinned widgets are hidden; overlay window stays open. */
   widgetsSuppressed: boolean;
   /** Browser widget stays visible while widgets are suppressed. */
   browserAlwaysDisplayed: boolean;
+  /** Fleet MOTD widget stays visible while widgets are suppressed. */
+  fleetMotdAlwaysDisplayed: boolean;
+  /** Intel feed widget stays visible while widgets are suppressed. */
+  intelFeedAlwaysDisplayed: boolean;
   /** Hotkey chord to toggle `widgetsSuppressed` (RegisterHotKey). */
   toggleHotkey: string;
   /** User-editable shortcuts shown when the browser URL is empty (new-tab style). */
@@ -126,6 +153,18 @@ export type WidgetOverlaySettings = {
   /** If set, this URL loads when the overlay opens while the saved layout URL is empty. */
   browserDefaultUrl: string | null;
   layout: WidgetOverlayLayout;
+};
+
+export type IntelWidgetLine = {
+  timestamp: string;
+  channelName: string;
+  message: string;
+  backgroundColor: string;
+};
+
+export type WidgetSnapshot = {
+  fleetMotd: string;
+  intelLines: IntelWidgetLine[];
 };
 
 export type RuntimeThumbnailSnapshot = {
@@ -139,6 +178,28 @@ export type RuntimeThumbnailStateSnapshot = {
     pid: number | null;
     windowTitle: string | null;
   };
+};
+
+export type EveDetectedProfile = {
+  serverName: string;
+  profileName: string;
+  fullPath: string;
+  isDefault: boolean;
+};
+
+export type EveProfileCharacter = {
+  characterId: string;
+  filePath: string;
+};
+
+export type EveProfileUser = {
+  userId: string;
+  filePath: string;
+};
+
+export type EveProfileSettingsSources = {
+  characters: EveProfileCharacter[];
+  users: EveProfileUser[];
 };
 
 export type MonitorInfoDto = {

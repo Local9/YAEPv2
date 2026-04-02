@@ -13,8 +13,14 @@ import type {
   ThumbnailConfig,
   ThumbnailSetting,
   BrowserQuickLink,
+  EveChatChannel,
+  EveChatChannelType,
+  EveLogSettings,
+  WidgetSnapshot,
   WidgetOverlayLayout,
-  WidgetOverlaySettings
+  WidgetOverlaySettings,
+  EveDetectedProfile,
+  EveProfileSettingsSources
 } from "$models/domain";
 
 // Security boundary note: renderer values are untrusted.
@@ -59,8 +65,36 @@ export const backend = {
   getThumbnailSettings(profileId: number): Promise<ThumbnailSetting[]> {
     return invoke("get_thumbnail_settings", { profileId });
   },
-  saveThumbnailSetting(profileId: number, windowTitle: string, config: ThumbnailConfig): Promise<void> {
-    return invoke("save_thumbnail_setting", { profileId, windowTitle, config });
+  saveThumbnailSetting(
+    profileId: number,
+    windowTitle: string,
+    config: ThumbnailConfig,
+    characterId?: number | null
+  ): Promise<void> {
+    return invoke("save_thumbnail_setting", { profileId, windowTitle, config, characterId: characterId ?? null });
+  },
+  eveGetLogSettings(profileId: number): Promise<EveLogSettings> {
+    return invoke("eve_get_log_settings", { profileId });
+  },
+  eveSaveLogSettings(profileId: number, settings: EveLogSettings): Promise<void> {
+    return invoke("eve_save_log_settings", { profileId, settings });
+  },
+  eveListChatChannels(profileId: number): Promise<EveChatChannel[]> {
+    return invoke("eve_list_chat_channels", { profileId });
+  },
+  eveAddChatChannel(
+    profileId: number,
+    channelType: EveChatChannelType,
+    channelName: string,
+    backgroundColor?: string | null
+  ): Promise<EveChatChannel> {
+    return invoke("eve_add_chat_channel", { profileId, channelType, channelName, backgroundColor: backgroundColor ?? null });
+  },
+  eveRemoveChatChannel(profileId: number, channelId: number): Promise<void> {
+    return invoke("eve_remove_chat_channel", { profileId, channelId });
+  },
+  eveUpdateChatChannelColor(profileId: number, channelId: number, backgroundColor: string): Promise<void> {
+    return invoke("eve_update_chat_channel_color", { profileId, channelId, backgroundColor });
   },
   getClientGroups(profileId: number): Promise<ClientGroup[]> {
     return invoke("get_client_groups", { profileId });
@@ -157,20 +191,66 @@ export const backend = {
   activateWindowByPid(pid: number): Promise<void> {
     return invoke("activate_window_by_pid", { pid });
   },
+  openExternalUrl(url: string): Promise<void> {
+    return invoke("open_external_url", { url });
+  },
   getRuntimeThumbnailState(): Promise<RuntimeThumbnailStateSnapshot> {
     return invoke("get_runtime_thumbnail_state");
   },
   appReady(): Promise<void> {
     return invoke("app_ready");
   },
+  widgetGetSnapshot(): Promise<WidgetSnapshot> {
+    return invoke("widget_get_snapshot");
+  },
   eveProfilesList(): Promise<string[]> {
     return invoke("eve_profiles_list");
+  },
+  eveProfilesDetected(): Promise<EveDetectedProfile[]> {
+    return invoke("eve_profiles_detected");
+  },
+  eveCopyProfileOnServer(
+    serverName: string,
+    sourceProfileName: string,
+    newProfileName: string
+  ): Promise<void> {
+    return invoke("eve_copy_profile_on_server", { serverName, sourceProfileName, newProfileName });
+  },
+  eveDeleteProfileOnServer(serverName: string, profileName: string): Promise<void> {
+    return invoke("eve_delete_profile_on_server", { serverName, profileName });
+  },
+  eveGetProfileSettingsSources(serverName: string, profileName: string): Promise<EveProfileSettingsSources> {
+    return invoke("eve_get_profile_settings_sources", { serverName, profileName });
+  },
+  eveCopyProfileSettingsFromSources(
+    serverName: string,
+    profileName: string,
+    sourceCharacterId: string,
+    sourceUserId: string
+  ): Promise<void> {
+    return invoke("eve_copy_profile_settings_from_sources", {
+      serverName,
+      profileName,
+      sourceCharacterId,
+      sourceUserId
+    });
   },
   eveCopyProfile(sourceProfile: string, newProfile: string): Promise<void> {
     return invoke("eve_copy_profile", { sourceProfile, newProfile });
   },
   eveCopyCharacterFiles(sourceProfile: string, targetProfile: string): Promise<void> {
     return invoke("eve_copy_character_files", { sourceProfile, targetProfile });
+  },
+  eveCopyCharacterFilesOnServer(
+    serverName: string,
+    sourceProfileName: string,
+    targetProfileName: string
+  ): Promise<void> {
+    return invoke("eve_copy_character_files_on_server", {
+      serverName,
+      sourceProfileName,
+      targetProfileName
+    });
   },
   eveBackupAllProfiles(outputPath: string): Promise<void> {
     return invoke("eve_backup_all_profiles", { outputPath });

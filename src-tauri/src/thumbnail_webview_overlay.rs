@@ -32,6 +32,9 @@ pub struct ThumbnailOverlayStatePayload {
     pub focused: bool,
     pub focus_border_color: String,
     pub focus_border_thickness: i64,
+    pub decloak_flash_color: String,
+    pub decloak_flash_thickness: i64,
+    pub decloak_flash_duration_ms: i64,
     pub show_title_overlay: bool,
     pub title: String,
 }
@@ -264,6 +267,9 @@ pub fn overlay_state_payload(
         focused,
         focus_border_color: config.focus_border_color.clone(),
         focus_border_thickness: config.focus_border_thickness,
+        decloak_flash_color: config.decloak_flash_color.clone(),
+        decloak_flash_thickness: config.decloak_flash_thickness,
+        decloak_flash_duration_ms: config.decloak_flash_duration_ms,
         show_title_overlay: config.show_title_overlay,
         title: display_title,
     }

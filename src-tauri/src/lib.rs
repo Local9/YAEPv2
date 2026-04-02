@@ -2,6 +2,7 @@ mod db;
 mod diag;
 mod dwm;
 mod error;
+mod eve_chat_log_service;
 mod eve_profile_tools;
 #[cfg(target_os = "windows")]
 mod global_hotkeys;
@@ -12,6 +13,7 @@ mod monitors;
 mod thumbnail_service;
 mod thumbnail_webview_overlay;
 mod widget_overlay;
+mod widget_service;
 mod windows;
 
 use serde::Deserialize;
@@ -29,14 +31,16 @@ use crate::dwm::DwmService;
 use crate::eve_profile_tools::EveProfileToolsService;
 use crate::hotkeys::HotkeyService;
 use crate::models::{
-    ClientGroup, ClientGroupDetail, DrawerSettings, GridLayoutPayload, GridLayoutPreviewItem,
-    HealthSnapshot, MonitorInfoDto, MumbleLink,     MumbleLinksOverlaySettings, MumbleServerGroup,
-    BrowserQuickLink, Profile, ThumbnailConfig, ThumbnailSetting, WidgetOverlayLayout,
+    BrowserQuickLink, ClientGroup, ClientGroupDetail, DrawerSettings, EveChatChannel,
+    EveDetectedProfile, EveLogSettings, EveProfileSettingsSources, GridLayoutPayload,
+    GridLayoutPreviewItem, HealthSnapshot, MonitorInfoDto, MumbleLink, MumbleLinksOverlaySettings,
+    MumbleServerGroup, Profile, ThumbnailConfig, ThumbnailSetting, WidgetOverlayLayout,
     WidgetOverlaySettings,
 };
 use crate::thumbnail_service::{RuntimeThumbnailStateSnapshot, ThumbnailService};
 use crate::thumbnail_webview_overlay::ThumbnailOverlayStatePayload;
 use crate::widget_overlay::WidgetOverlayHitRect;
+use crate::widget_service::{WidgetService, WidgetSnapshot};
 use crate::windows::WindowService;
 
 const GENERIC_OPERATION_ERROR: &str = "Operation failed. Check diagnostics for details.";
@@ -48,6 +52,8 @@ pub struct AppState {
     window_service: Arc<WindowService>,
     dwm: Arc<DwmService>,
     eve_tools: Arc<EveProfileToolsService>,
+    eve_chat_logs: Arc<eve_chat_log_service::EveChatLogService>,
+    widget_service: Arc<WidgetService>,
 }
 
 impl AppState {
@@ -59,6 +65,8 @@ impl AppState {
             window_service: Arc::new(WindowService),
             dwm: Arc::new(DwmService::default()),
             eve_tools: Arc::new(EveProfileToolsService),
+            eve_chat_logs: Arc::new(eve_chat_log_service::EveChatLogService::default()),
+            widget_service: Arc::new(WidgetService::default()),
         })
     }
 }
@@ -187,12 +195,17 @@ fn set_current_profile(
 ) -> Result<(), String> {
     state.db.set_active_profile(profile_id)?;
     state.thumbnail_service.stop();
+    state.eve_chat_logs.stop();
+    let app_for_thumbnails = app_handle.clone();
     state.thumbnail_service.start(
-        app_handle,
+        app_for_thumbnails,
         state.db.clone(),
         state.window_service.clone(),
         state.dwm.clone(),
     );
+    state
+        .eve_chat_logs
+        .start(app_handle, state.db.clone(), state.widget_service.clone());
     refresh_global_hotkeys();
     Ok(())
 }
@@ -273,11 +286,78 @@ fn save_thumbnail_setting(
     profile_id: i64,
     window_title: String,
     config: ThumbnailConfig,
+    character_id: Option<i64>,
 ) -> Result<(), String> {
     state
         .db
-        .save_thumbnail_setting(profile_id, window_title, config)?;
+        .save_thumbnail_setting(profile_id, window_title, config, character_id)?;
     state.dwm.sync_thumbnail_graph();
+    Ok(())
+}
+
+#[tauri::command]
+fn eve_get_log_settings(state: State<'_, AppState>, profile_id: i64) -> Result<EveLogSettings, String> {
+    state.db.get_eve_log_settings(profile_id)
+}
+
+#[tauri::command]
+fn eve_save_log_settings(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    settings: EveLogSettings,
+) -> Result<(), String> {
+    state.db.save_eve_log_settings(profile_id, settings)
+}
+
+#[tauri::command]
+fn eve_list_chat_channels(
+    state: State<'_, AppState>,
+    profile_id: i64,
+) -> Result<Vec<EveChatChannel>, String> {
+    state.db.list_eve_chat_channels(profile_id)
+}
+
+#[tauri::command]
+fn eve_add_chat_channel(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    channel_type: String,
+    channel_name: String,
+    background_color: Option<String>,
+) -> Result<EveChatChannel, String> {
+    state
+        .db
+        .add_eve_chat_channel(profile_id, channel_type, channel_name, background_color)
+}
+
+#[tauri::command]
+fn eve_remove_chat_channel(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    channel_id: i64,
+) -> Result<(), String> {
+    state.db.remove_eve_chat_channel(profile_id, channel_id)
+}
+
+#[tauri::command]
+fn eve_update_chat_channel_color(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    profile_id: i64,
+    channel_id: i64,
+    background_color: String,
+) -> Result<(), String> {
+    state
+        .db
+        .update_eve_chat_channel_color(profile_id, channel_id, background_color)?;
+    let channels = state.db.list_eve_chat_channels(profile_id)?;
+    let color_by_channel: std::collections::HashMap<String, String> = channels
+        .into_iter()
+        .map(|channel| (channel.channel_name, channel.background_color))
+        .collect();
+    state
+        .widget_service
+        .refresh_intel_channel_colors(&app_handle, &color_by_channel);
     Ok(())
 }
 
@@ -389,7 +469,7 @@ fn reorder_client_group_members(
         next.height = h;
         state
             .db
-            .save_thumbnail_setting(profile_id, new_title.clone(), next)?;
+            .save_thumbnail_setting(profile_id, new_title.clone(), next, current.character_id)?;
     }
 
     state.thumbnail_service.start(
@@ -505,6 +585,20 @@ fn cycle_client_group(
     direction: String,
 ) -> Result<(), String> {
     cycle_client_group_internal(&state, group_id, &direction, false)
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() || trimmed.len() > 2048 {
+        return Err("Invalid URL".to_string());
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("http://") && !lower.starts_with("https://") {
+        return Err("Only http/https URLs are allowed".to_string());
+    }
+    opener::open(trimmed).map_err(|e| sanitize_error("open_external_url", e.to_string()))?;
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
@@ -730,7 +824,7 @@ fn grid_apply_layout(
         next.y = clamp_position(fy as i64);
         state
             .db
-            .save_thumbnail_setting(payload.profile_id, item.window_title.clone(), next)?;
+            .save_thumbnail_setting(payload.profile_id, item.window_title.clone(), next, None)?;
     }
     state.thumbnail_service.start(
         app_handle,
@@ -746,6 +840,59 @@ fn grid_apply_layout(
 #[tauri::command]
 fn eve_profiles_list(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     state.eve_tools.list_profiles()
+}
+
+#[tauri::command]
+fn eve_profiles_detected(state: State<'_, AppState>) -> Result<Vec<EveDetectedProfile>, String> {
+    state.eve_tools.list_detected_profiles()
+}
+
+#[tauri::command]
+fn eve_copy_profile_on_server(
+    state: State<'_, AppState>,
+    server_name: String,
+    source_profile_name: String,
+    new_profile_name: String,
+) -> Result<(), String> {
+    state
+        .eve_tools
+        .copy_profile_on_server(server_name, source_profile_name, new_profile_name)
+}
+
+#[tauri::command]
+fn eve_delete_profile_on_server(
+    state: State<'_, AppState>,
+    server_name: String,
+    profile_name: String,
+) -> Result<(), String> {
+    state.eve_tools.delete_profile_on_server(server_name, profile_name)
+}
+
+#[tauri::command]
+fn eve_get_profile_settings_sources(
+    state: State<'_, AppState>,
+    server_name: String,
+    profile_name: String,
+) -> Result<EveProfileSettingsSources, String> {
+    state
+        .eve_tools
+        .get_profile_settings_sources(server_name, profile_name)
+}
+
+#[tauri::command]
+fn eve_copy_profile_settings_from_sources(
+    state: State<'_, AppState>,
+    server_name: String,
+    profile_name: String,
+    source_character_id: String,
+    source_user_id: String,
+) -> Result<(), String> {
+    state.eve_tools.copy_profile_settings_from_sources(
+        server_name,
+        profile_name,
+        source_character_id,
+        source_user_id,
+    )
 }
 
 #[tauri::command]
@@ -766,6 +913,20 @@ fn eve_copy_character_files(
     state
         .eve_tools
         .copy_character_files(source_profile, target_profile)
+}
+
+#[tauri::command]
+fn eve_copy_character_files_on_server(
+    state: State<'_, AppState>,
+    server_name: String,
+    source_profile_name: String,
+    target_profile_name: String,
+) -> Result<(), String> {
+    state.eve_tools.copy_character_files_on_server(
+        server_name,
+        source_profile_name,
+        target_profile_name,
+    )
 }
 
 #[tauri::command]
@@ -801,14 +962,25 @@ fn get_runtime_thumbnail_state(
 }
 
 #[tauri::command]
+fn widget_get_snapshot(state: State<'_, AppState>) -> Result<WidgetSnapshot, String> {
+    Ok(state.widget_service.snapshot())
+}
+
+#[tauri::command]
 fn app_ready(state: State<'_, AppState>, app_handle: AppHandle) -> Result<(), String> {
     let thumbnail_service = state.thumbnail_service.clone();
     let db = state.db.clone();
+    let db_for_logs = state.db.clone();
     let window_service = state.window_service.clone();
     let dwm = state.dwm.clone();
+    let eve_chat_logs = state.eve_chat_logs.clone();
+    let widget_service = state.widget_service.clone();
     tauri::async_runtime::spawn(async move {
+        let app_for_thumbnails = app_handle.clone();
         thumbnail_service.stop();
-        thumbnail_service.start(app_handle, db, window_service, dwm);
+        thumbnail_service.start(app_for_thumbnails, db, window_service, dwm);
+        eve_chat_logs.stop();
+        eve_chat_logs.start(app_handle, db_for_logs, widget_service);
     });
     Ok(())
 }
@@ -948,6 +1120,12 @@ pub fn run() {
             set_thumbnail_default_config,
             get_thumbnail_settings,
             save_thumbnail_setting,
+            eve_get_log_settings,
+            eve_save_log_settings,
+            eve_list_chat_channels,
+            eve_add_chat_channel,
+            eve_remove_chat_channel,
+            eve_update_chat_channel_color,
             get_client_groups,
             get_client_groups_detailed,
             create_client_group,
@@ -977,12 +1155,20 @@ pub fn run() {
             grid_preview_layout,
             grid_apply_layout,
             eve_profiles_list,
+            eve_profiles_detected,
+            eve_copy_profile_on_server,
+            eve_delete_profile_on_server,
+            eve_get_profile_settings_sources,
+            eve_copy_profile_settings_from_sources,
             eve_copy_profile,
             eve_copy_character_files,
+            eve_copy_character_files_on_server,
             eve_backup_all_profiles,
             eve_fetch_character_name,
             activate_window_by_pid,
+            open_external_url,
             app_ready,
+            widget_get_snapshot,
             get_runtime_thumbnail_state,
             get_thumbnail_overlay_state,
             widget_overlay_get_settings,

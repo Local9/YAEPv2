@@ -1165,7 +1165,7 @@ fn persist_drag_results(st: &DragState) {
         cfg.y = le.y as i64;
         cfg.width = le.w as i64;
         cfg.height = le.h as i64;
-        let _ = db.save_thumbnail_setting(profile_id, title, cfg);
+        let _ = db.save_thumbnail_setting(profile_id, title, cfg, None);
     }
 }
 
@@ -1216,7 +1216,7 @@ fn handle_thumbnail_wheel(hwnd: HWND, wparam: WPARAM) -> bool {
         .ok()
         .and_then(|m| m.get(&info.pid).map(|e| e.overlay_label.clone()))
         .unwrap_or_default();
-    if let Err(e) = db.save_thumbnail_setting(profile_id, info.window_title.clone(), cfg.clone()) {
+    if let Err(e) = db.save_thumbnail_setting(profile_id, info.window_title.clone(), cfg.clone(), None) {
         eprintln!("YAEP: save after wheel resize: {e}");
         return false;
     }

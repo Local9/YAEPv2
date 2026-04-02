@@ -39,12 +39,17 @@
   const OPACITY_MAX = 1;
   const BORDER_THICKNESS_MIN = 0;
   const BORDER_THICKNESS_MAX = 12;
+  const DECLOAK_FLASH_THICKNESS_MIN = 1;
+  const DECLOAK_FLASH_THICKNESS_MAX = 12;
+  const DECLOAK_FLASH_DURATION_MIN = 250;
+  const DECLOAK_FLASH_DURATION_MAX = 10000;
 
   let profiles = $state<Profile[]>([]);
   let activeProfileId = $state<number | null>(null);
   let defaultConfig = $state<ThumbnailConfig | null>(null);
   let settings = $state<ThumbnailSetting[]>([]);
   let windowTitle = $state("");
+  let characterIdText = $state("");
   let saveMessage = $state("");
   let error = $state("");
   let selectedTemplateTitle = $state("");
@@ -127,12 +132,42 @@
     if (activeProfileId == null || !windowTitle.trim()) return;
     const config = cloneDefault();
     if (!config) return;
+    const parsedCharacterId = characterIdText.trim() === "" ? null : Number(characterIdText.trim());
+    if (parsedCharacterId != null && (!Number.isInteger(parsedCharacterId) || parsedCharacterId <= 0)) {
+      error = "Character ID must be a positive whole number";
+      return;
+    }
     try {
-      await backend.saveThumbnailSetting(activeProfileId, windowTitle.trim(), config);
+      await backend.saveThumbnailSetting(activeProfileId, windowTitle.trim(), config, parsedCharacterId);
       windowTitle = "";
+      characterIdText = "";
       saveMessage = "Override saved";
       error = "";
       await refresh();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function saveOverrideOnBlur(setting: ThumbnailSetting) {
+    if (activeProfileId == null) return;
+    const width = Number(setting.config.width);
+    const height = Number(setting.config.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      error = "Width and Height must be positive numbers";
+      return;
+    }
+    const parsedCharacterId =
+      setting.characterId == null || String(setting.characterId).trim() === ""
+        ? null
+        : Number(setting.characterId);
+    if (parsedCharacterId != null && (!Number.isInteger(parsedCharacterId) || parsedCharacterId <= 0)) {
+      error = "Character ID must be a positive whole number";
+      return;
+    }
+    try {
+      await backend.saveThumbnailSetting(activeProfileId, setting.windowTitle, setting.config, parsedCharacterId);
+      error = "";
     } catch (e) {
       error = String(e);
     }
@@ -324,6 +359,49 @@
             />
           </FieldContent>
         </Field>
+        <Field>
+          <FieldLabel class="text-muted-foreground">Decloak flash color</FieldLabel>
+          <FieldContent>
+            <div class="flex items-center gap-2">
+              <ColorPicker bind:value={defaultConfig.decloakFlashColor} />
+              <Input bind:value={defaultConfig.decloakFlashColor} class="font-mono" />
+            </div>
+          </FieldContent>
+        </Field>
+        <Field class="sm:col-span-2 lg:col-span-3">
+          <div class="flex items-baseline justify-between gap-2">
+            <FieldLabel class="text-muted-foreground">Decloak flash border thickness</FieldLabel>
+            <span class="text-sm tabular-nums text-muted-foreground">
+              {defaultConfig.decloakFlashThickness}
+            </span>
+          </div>
+          <FieldContent class="pt-1">
+            <Slider
+              type="single"
+              bind:value={defaultConfig.decloakFlashThickness}
+              min={DECLOAK_FLASH_THICKNESS_MIN}
+              max={DECLOAK_FLASH_THICKNESS_MAX}
+              step={1}
+            />
+          </FieldContent>
+        </Field>
+        <Field class="sm:col-span-2 lg:col-span-4">
+          <div class="flex items-baseline justify-between gap-2">
+            <FieldLabel class="text-muted-foreground">Decloak flash pulse duration (ms)</FieldLabel>
+            <span class="text-sm tabular-nums text-muted-foreground">
+              {defaultConfig.decloakFlashDurationMs}
+            </span>
+          </div>
+          <FieldContent class="pt-1">
+            <Slider
+              type="single"
+              bind:value={defaultConfig.decloakFlashDurationMs}
+              min={DECLOAK_FLASH_DURATION_MIN}
+              max={DECLOAK_FLASH_DURATION_MAX}
+              step={250}
+            />
+          </FieldContent>
+        </Field>
         <Field orientation="horizontal" class="cursor-pointer self-end sm:col-span-2 lg:col-span-1">
           <FieldContent>
             <Checkbox bind:checked={defaultConfig.showTitleOverlay} />
@@ -351,23 +429,70 @@
         bind:value={windowTitle}
         placeholder="EVE - CharacterName"
       />
+      <Input class="sm:w-56" bind:value={characterIdText} placeholder="Character ID (optional)" />
       <Button type="button" variant="outline" onclick={addOrUpdateWindowOverride} class="shrink-0 gap-2">
         <SaveIcon class="size-4 shrink-0" aria-hidden="true" />
         Save override from default
       </Button>
     </div>
-    <ul class="mt-4 space-y-2 text-sm">
-      {#each settings as setting (setting.windowTitle)}
-        <li class="flex items-start gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2">
-          <ListIcon class="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <span>
-            <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{setting.windowTitle}</code>
-            <span class="ml-2 text-muted-foreground">
-              ({setting.config.width}x{setting.config.height})
-            </span>
-          </span>
-        </li>
-      {/each}
-    </ul>
+    <p class="mt-2 text-xs text-muted-foreground">
+      Character IDs can be found in zKillboard URLs, for example
+      <code class="rounded bg-muted px-1">https://zkillboard.com/character/1698894137/</code>.
+    </p>
+    <div class="mt-4 overflow-x-auto rounded-md border border-border/60">
+      <table class="w-full text-sm">
+        <thead class="bg-muted/40 text-left">
+          <tr>
+            <th class="px-3 py-2 font-medium">Thumbnail Title</th>
+            <th class="px-3 py-2 font-medium">Width</th>
+            <th class="px-3 py-2 font-medium">Height</th>
+            <th class="px-3 py-2 font-medium">Character ID</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#if settings.length === 0}
+            <tr>
+              <td class="px-3 py-2 text-muted-foreground" colspan="4">No overrides saved yet.</td>
+            </tr>
+          {:else}
+            {#each settings as setting (setting.windowTitle)}
+              <tr class="border-t">
+                <td class="px-3 py-2">
+                  <div class="flex items-center gap-2">
+                    <ListIcon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{setting.windowTitle}</code>
+                  </div>
+                </td>
+                <td class="px-3 py-2">
+                  <Input
+                    type="number"
+                    min="1"
+                    bind:value={setting.config.width}
+                    onblur={() => void saveOverrideOnBlur(setting)}
+                  />
+                </td>
+                <td class="px-3 py-2">
+                  <Input
+                    type="number"
+                    min="1"
+                    bind:value={setting.config.height}
+                    onblur={() => void saveOverrideOnBlur(setting)}
+                  />
+                </td>
+                <td class="px-3 py-2">
+                  <Input
+                    type="number"
+                    min="1"
+                    bind:value={setting.characterId}
+                    onblur={() => void saveOverrideOnBlur(setting)}
+                    placeholder="Optional"
+                  />
+                </td>
+              </tr>
+            {/each}
+          {/if}
+        </tbody>
+      </table>
+    </div>
   </CardContent>
 </Card>
