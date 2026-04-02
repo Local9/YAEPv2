@@ -411,10 +411,19 @@ fn register_runtime_thumbnail_locked(
         diag::trace("dwm", &format!("pid={pid} skip: no active profile"));
         return;
     };
-    let Ok(mut config) = db.resolve_thumbnail_config(profile_id, &title) else {
+    let prior_title = inner
+        .runtime
+        .lock()
+        .ok()
+        .and_then(|s| s.get(&pid).map(|e| e.window_title.clone()));
+    let Ok(mut config) = db.resolve_thumbnail_config_for_registration(
+        profile_id,
+        &title,
+        prior_title.as_deref(),
+    ) else {
         diag::trace(
             "dwm",
-            &format!("pid={pid} skip: resolve_thumbnail_config failed"),
+            &format!("pid={pid} skip: resolve_thumbnail_config_for_registration failed"),
         );
         return;
     };

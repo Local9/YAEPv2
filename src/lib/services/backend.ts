@@ -8,6 +8,7 @@ import type {
   MonitorInfoDto,
   MumbleLink,
   MumbleServerGroup,
+  MumbleTreeSnapshot,
   Profile,
   RuntimeThumbnailStateSnapshot,
   ThumbnailConfig,
@@ -138,17 +139,54 @@ export const backend = {
   getMumbleLinks(): Promise<MumbleLink[]> {
     return invoke("get_mumble_links");
   },
-  createMumbleLink(name: string, url: string, displayOrder: number, hotkey: string): Promise<void> {
-    return invoke("create_mumble_link", { name, url, displayOrder, hotkey });
+  getMumbleTree(): Promise<MumbleTreeSnapshot> {
+    return invoke("get_mumble_tree");
+  },
+  createMumbleFolder(
+    serverGroupId: number,
+    parentFolderId: number | null,
+    name: string,
+    displayOrder: number
+  ): Promise<number> {
+    return invoke("create_mumble_folder", {
+      payload: { serverGroupId, parentFolderId, name, displayOrder }
+    });
+  },
+  updateMumbleFolder(folderId: number, name: string, displayOrder: number): Promise<void> {
+    return invoke("update_mumble_folder", {
+      payload: { folderId, name, displayOrder }
+    });
+  },
+  deleteMumbleFolder(folderId: number): Promise<void> {
+    return invoke("delete_mumble_folder", { folderId });
+  },
+  createMumbleLink(
+    name: string,
+    url: string,
+    displayOrder: number,
+    hotkey: string,
+    serverGroupId: number,
+    folderId: number | null
+  ): Promise<void> {
+    return invoke("create_mumble_link", {
+      payload: { name, url, displayOrder, hotkey, serverGroupId, folderId }
+    });
   },
   updateMumbleLink(
     linkId: number,
     name: string,
     url: string,
     displayOrder: number,
-    hotkey: string
+    hotkey: string,
+    serverGroupId: number,
+    folderId: number | null
   ): Promise<void> {
-    return invoke("update_mumble_link", { linkId, name, url, displayOrder, hotkey });
+    return invoke("update_mumble_link", {
+      payload: { linkId, name, url, displayOrder, hotkey, serverGroupId, folderId }
+    });
+  },
+  openMumbleLink(linkId: number): Promise<void> {
+    return invoke("open_mumble_link", { linkId });
   },
   setMumbleLinkSelected(linkId: number, isSelected: boolean): Promise<void> {
     return invoke("set_mumble_link_selected", { linkId, isSelected });

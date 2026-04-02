@@ -100,6 +100,17 @@ pub struct MumbleServerGroup {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MumbleFolder {
+    pub id: i64,
+    pub server_group_id: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_folder_id: Option<i64>,
+    pub name: String,
+    pub display_order: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MumbleLink {
     pub id: i64,
     pub name: String,
@@ -107,6 +118,18 @@ pub struct MumbleLink {
     pub display_order: i64,
     pub is_selected: bool,
     pub hotkey: String,
+    pub server_group_id: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder_id: Option<i64>,
+}
+
+/// Flat snapshot for building the server / folder / link tree in the UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MumbleTreeSnapshot {
+    pub groups: Vec<MumbleServerGroup>,
+    pub folders: Vec<MumbleFolder>,
+    pub links: Vec<MumbleLink>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,6 +171,10 @@ fn default_widget_overlay_show_intel_feed() -> bool {
     true
 }
 
+fn default_widget_overlay_show_mumble_links() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserQuickLink {
@@ -170,6 +197,8 @@ pub struct WidgetOverlaySettings {
     pub show_fleet_motd_widget: bool,
     #[serde(default = "default_widget_overlay_show_intel_feed")]
     pub show_intel_feed_widget: bool,
+    #[serde(default = "default_widget_overlay_show_mumble_links")]
+    pub show_mumble_links_widget: bool,
     /// When true (after hotkey/tray), non-pinned widgets are hidden; see `browser_always_displayed`.
     #[serde(default)]
     pub widgets_suppressed: bool,
@@ -182,6 +211,9 @@ pub struct WidgetOverlaySettings {
     /// Intel feed widget stays visible while `widgets_suppressed` is true.
     #[serde(default)]
     pub intel_feed_always_displayed: bool,
+    /// Mumble links widget stays visible while `widgets_suppressed` is true.
+    #[serde(default)]
+    pub mumble_links_always_displayed: bool,
     /// Global hotkey string (e.g. `Ctrl+Shift+W`) to toggle `widgets_suppressed`.
     #[serde(default)]
     pub toggle_hotkey: String,
@@ -216,7 +248,16 @@ fn default_browser_quick_links_vec() -> Vec<BrowserQuickLink> {
     default_browser_quick_links()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+fn default_mumble_links_widget_frame() -> WidgetFrame {
+    WidgetFrame {
+        x: 24.0,
+        y: 520.0,
+        width: 200.0,
+        height: 44.0,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WidgetOverlayLayout {
     #[serde(default)]
@@ -225,6 +266,19 @@ pub struct WidgetOverlayLayout {
     pub fleet_motd: WidgetFrame,
     #[serde(default)]
     pub intel_feed: WidgetFrame,
+    #[serde(default = "default_mumble_links_widget_frame")]
+    pub mumble_links: WidgetFrame,
+}
+
+impl Default for WidgetOverlayLayout {
+    fn default() -> Self {
+        Self {
+            browser: WidgetBrowserFrame::default(),
+            fleet_motd: WidgetFrame::default(),
+            intel_feed: WidgetFrame::default(),
+            mumble_links: default_mumble_links_widget_frame(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

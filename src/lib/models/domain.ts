@@ -65,6 +65,14 @@ export type MumbleServerGroup = {
   displayOrder: number;
 };
 
+export type MumbleFolder = {
+  id: number;
+  serverGroupId: number;
+  parentFolderId?: number | null;
+  name: string;
+  displayOrder: number;
+};
+
 export type MumbleLink = {
   id: number;
   name: string;
@@ -72,6 +80,14 @@ export type MumbleLink = {
   displayOrder: number;
   isSelected: boolean;
   hotkey: string;
+  serverGroupId: number;
+  folderId?: number | null;
+};
+
+export type MumbleTreeSnapshot = {
+  groups: MumbleServerGroup[];
+  folders: MumbleFolder[];
+  links: MumbleLink[];
 };
 
 export type MumbleLinksOverlaySettings = {
@@ -115,6 +131,7 @@ export type WidgetOverlayLayout = {
   browser: WidgetBrowserFrame;
   fleetMotd: WidgetLayoutRect;
   intelFeed: WidgetLayoutRect;
+  mumbleLinks: WidgetLayoutRect;
 };
 
 export type BrowserQuickLink = {
@@ -138,6 +155,7 @@ export type WidgetOverlaySettings = {
   showBrowserWidget: boolean;
   showFleetMotdWidget: boolean;
   showIntelFeedWidget: boolean;
+  showMumbleLinksWidget: boolean;
   /** When true, non-pinned widgets are hidden; overlay window stays open. */
   widgetsSuppressed: boolean;
   /** Browser widget stays visible while widgets are suppressed. */
@@ -146,6 +164,8 @@ export type WidgetOverlaySettings = {
   fleetMotdAlwaysDisplayed: boolean;
   /** Intel feed widget stays visible while widgets are suppressed. */
   intelFeedAlwaysDisplayed: boolean;
+  /** Mumble links widget stays visible while widgets are suppressed. */
+  mumbleLinksAlwaysDisplayed: boolean;
   /** Hotkey chord to toggle `widgetsSuppressed` (RegisterHotKey). */
   toggleHotkey: string;
   /** User-editable shortcuts shown when the browser URL is empty (new-tab style). */

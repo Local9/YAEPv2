@@ -5,6 +5,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { backend } from "$services/backend";
   import BrowserWidget from "$lib/components/widget-overlay/browser-widget.svelte";
+  import MumbleLinksWidget from "$lib/components/widget-overlay/mumble-links-widget.svelte";
   import WidgetWrapper from "$lib/components/widget-overlay/widget-wrapper.svelte";
   import {
     DEFAULT_BROWSER_QUICK_LINKS,
@@ -58,14 +59,17 @@
       browserAlwaysDisplayed: loaded.browserAlwaysDisplayed ?? false,
       showFleetMotdWidget: loaded.showFleetMotdWidget ?? true,
       showIntelFeedWidget: loaded.showIntelFeedWidget ?? true,
+      showMumbleLinksWidget: loaded.showMumbleLinksWidget ?? true,
       fleetMotdAlwaysDisplayed: loaded.fleetMotdAlwaysDisplayed ?? false,
       intelFeedAlwaysDisplayed: loaded.intelFeedAlwaysDisplayed ?? false,
+      mumbleLinksAlwaysDisplayed: loaded.mumbleLinksAlwaysDisplayed ?? false,
       toggleHotkey: loaded.toggleHotkey ?? "",
       layout: {
         ...loaded.layout,
         browser,
         fleetMotd: loaded.layout.fleetMotd ?? { x: 24, y: 24, width: 420, height: 180 },
-        intelFeed: loaded.layout.intelFeed ?? { x: 24, y: 220, width: 560, height: 280 }
+        intelFeed: loaded.layout.intelFeed ?? { x: 24, y: 220, width: 560, height: 280 },
+        mumbleLinks: loaded.layout.mumbleLinks ?? { x: 24, y: 520, width: 200, height: 88 }
       }
     };
   }
@@ -82,10 +86,15 @@
     return s.showIntelFeedWidget && (!s.widgetsSuppressed || s.intelFeedAlwaysDisplayed);
   }
 
+  function mumbleLinksRenderedVisible(s: WidgetOverlaySettings): boolean {
+    return s.showMumbleLinksWidget && (!s.widgetsSuppressed || s.mumbleLinksAlwaysDisplayed);
+  }
+
   let settings = $state<WidgetOverlaySettings | null>(null);
   let browserCardEl = $state<HTMLElement | undefined>(undefined);
   let fleetMotdCardEl = $state<HTMLElement | undefined>(undefined);
   let intelFeedCardEl = $state<HTMLElement | undefined>(undefined);
+  let mumbleLinksCardEl = $state<HTMLElement | undefined>(undefined);
   let fleetMotd = $state("");
   let intelLines = $state<
     {
@@ -237,6 +246,9 @@
     if (intelFeedRenderedVisible(settings) && intelFeedCardEl) {
       rects.push(physicalRect(intelFeedCardEl));
     }
+    if (mumbleLinksRenderedVisible(settings) && mumbleLinksCardEl) {
+      rects.push(physicalRect(mumbleLinksCardEl));
+    }
     try {
       await invoke("widget_overlay_update_hit_regions", { rects });
     } catch {
@@ -278,17 +290,20 @@
         showBrowserWidget: true,
         showFleetMotdWidget: true,
         showIntelFeedWidget: true,
+        showMumbleLinksWidget: true,
         widgetsSuppressed: false,
         browserAlwaysDisplayed: false,
         fleetMotdAlwaysDisplayed: false,
         intelFeedAlwaysDisplayed: false,
+        mumbleLinksAlwaysDisplayed: false,
         toggleHotkey: "",
         browserQuickLinks: [...DEFAULT_BROWSER_QUICK_LINKS],
         browserDefaultUrl: null,
         layout: {
           browser: { ...DEFAULT_BROWSER },
           fleetMotd: { x: 24, y: 24, width: 420, height: 180 },
-          intelFeed: { x: 24, y: 220, width: 560, height: 280 }
+          intelFeed: { x: 24, y: 220, width: 560, height: 280 },
+          mumbleLinks: { x: 24, y: 520, width: 200, height: 88 }
         }
       };
     }
@@ -362,6 +377,15 @@
         </div>
       {/snippet}
     </WidgetWrapper>
+  {/if}
+  {#if settings && mumbleLinksRenderedVisible(settings)}
+    <MumbleLinksWidget
+      bind:frame={settings!.layout.mumbleLinks}
+      bind:pinned={settings!.mumbleLinksAlwaysDisplayed}
+      bind:rootEl={mumbleLinksCardEl}
+      onPersist={persistLayout}
+      onPinnedPersist={persistOverlaySettings}
+    />
   {/if}
   {#if settings && intelFeedRenderedVisible(settings)}
     <WidgetWrapper

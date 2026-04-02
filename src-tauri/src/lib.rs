@@ -34,8 +34,8 @@ use crate::models::{
     BrowserQuickLink, ClientGroup, ClientGroupDetail, DrawerSettings, EveChatChannel,
     EveDetectedProfile, EveLogSettings, EveProfileSettingsSources, GridLayoutPayload,
     GridLayoutPreviewItem, HealthSnapshot, MonitorInfoDto, MumbleLink, MumbleLinksOverlaySettings,
-    MumbleServerGroup, Profile, ThumbnailConfig, ThumbnailSetting, WidgetOverlayLayout,
-    WidgetOverlaySettings,
+    MumbleServerGroup, MumbleTreeSnapshot, Profile, ThumbnailConfig, ThumbnailSetting,
+    WidgetOverlayLayout, WidgetOverlaySettings,
 };
 use crate::thumbnail_service::{RuntimeThumbnailStateSnapshot, ThumbnailService};
 use crate::thumbnail_webview_overlay::ThumbnailOverlayStatePayload;
@@ -601,7 +601,6 @@ fn open_external_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
 pub(crate) fn open_mumble_link_internal(state: &AppState, link_id: i64) -> Result<(), String> {
     let links = state.db.get_mumble_links()?;
     let link = links
@@ -610,6 +609,11 @@ pub(crate) fn open_mumble_link_internal(state: &AppState, link_id: i64) -> Resul
         .ok_or_else(|| "Mumble link not found".to_string())?;
     opener::open(&link.url).map_err(|e| sanitize_error("open_mumble_link", e.to_string()))?;
     Ok(())
+}
+
+#[tauri::command]
+fn open_mumble_link(state: State<'_, AppState>, link_id: i64) -> Result<(), String> {
+    open_mumble_link_internal(&state, link_id)
 }
 
 #[cfg(target_os = "windows")]
@@ -626,34 +630,107 @@ fn get_mumble_links(state: State<'_, AppState>) -> Result<Vec<MumbleLink>, Strin
 }
 
 #[tauri::command]
-fn create_mumble_link(
-    state: State<'_, AppState>,
+fn get_mumble_tree(state: State<'_, AppState>) -> Result<MumbleTreeSnapshot, String> {
+    state.db.get_mumble_tree()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateMumbleFolderPayload {
+    server_group_id: i64,
+    parent_folder_id: Option<i64>,
     name: String,
-    url: String,
     display_order: i64,
-    hotkey: String,
+}
+
+#[tauri::command]
+fn create_mumble_folder(
+    state: State<'_, AppState>,
+    payload: CreateMumbleFolderPayload,
+) -> Result<i64, String> {
+    state.db.create_mumble_folder(
+        payload.server_group_id,
+        payload.parent_folder_id,
+        payload.name,
+        payload.display_order,
+    )
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateMumbleFolderPayload {
+    folder_id: i64,
+    name: String,
+    display_order: i64,
+}
+
+#[tauri::command]
+fn update_mumble_folder(
+    state: State<'_, AppState>,
+    payload: UpdateMumbleFolderPayload,
 ) -> Result<(), String> {
-    let normalized_hotkey = state.hotkeys.validate_hotkey(&hotkey)?;
     state
         .db
-        .create_mumble_link(name, url, display_order, normalized_hotkey)?;
+        .update_mumble_folder(payload.folder_id, payload.name, payload.display_order)
+}
+
+#[tauri::command]
+fn delete_mumble_folder(state: State<'_, AppState>, folder_id: i64) -> Result<(), String> {
+    state.db.delete_mumble_folder(folder_id)?;
     refresh_global_hotkeys();
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateMumbleLinkPayload {
+    name: String,
+    url: String,
+    display_order: i64,
+    hotkey: String,
+    server_group_id: i64,
+    folder_id: Option<i64>,
+}
+
 #[tauri::command]
-fn update_mumble_link(
-    state: State<'_, AppState>,
+fn create_mumble_link(state: State<'_, AppState>, payload: CreateMumbleLinkPayload) -> Result<(), String> {
+    let normalized_hotkey = state.hotkeys.validate_hotkey(&payload.hotkey)?;
+    state.db.create_mumble_link(
+        payload.name,
+        payload.url,
+        payload.display_order,
+        normalized_hotkey,
+        payload.server_group_id,
+        payload.folder_id,
+    )?;
+    refresh_global_hotkeys();
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateMumbleLinkPayload {
     link_id: i64,
     name: String,
     url: String,
     display_order: i64,
     hotkey: String,
-) -> Result<(), String> {
-    let normalized_hotkey = state.hotkeys.validate_hotkey(&hotkey)?;
-    state
-        .db
-        .update_mumble_link(link_id, name, url, display_order, normalized_hotkey)?;
+    server_group_id: i64,
+    folder_id: Option<i64>,
+}
+
+#[tauri::command]
+fn update_mumble_link(state: State<'_, AppState>, payload: UpdateMumbleLinkPayload) -> Result<(), String> {
+    let normalized_hotkey = state.hotkeys.validate_hotkey(&payload.hotkey)?;
+    state.db.update_mumble_link(
+        payload.link_id,
+        payload.name,
+        payload.url,
+        payload.display_order,
+        normalized_hotkey,
+        payload.server_group_id,
+        payload.folder_id,
+    )?;
     refresh_global_hotkeys();
     Ok(())
 }
@@ -1140,8 +1217,13 @@ pub fn run() {
             update_client_group_hotkeys,
             cycle_client_group,
             get_mumble_links,
+            get_mumble_tree,
+            create_mumble_folder,
+            update_mumble_folder,
+            delete_mumble_folder,
             create_mumble_link,
             update_mumble_link,
+            open_mumble_link,
             set_mumble_link_selected,
             delete_mumble_link,
             get_mumble_server_groups,
@@ -1336,19 +1418,36 @@ fn build_grid_layout_preview(
     let mut settings = state.db.get_thumbnail_settings(payload.profile_id)?;
     if let Some(group_id) = payload.selected_group_id {
         let titles = state.db.get_client_group_member_titles(group_id)?;
-        settings.retain(|setting| titles.contains(&setting.window_title));
+        settings.retain(|setting| {
+            let st = setting.window_title.trim();
+            titles.iter().any(|t| t.trim() == st)
+        });
         settings.sort_by_key(|setting| {
+            let st = setting.window_title.trim();
             titles
                 .iter()
-                .position(|title| title == &setting.window_title)
+                .position(|title| title.trim() == st)
                 .unwrap_or(usize::MAX)
         });
     } else {
+        let combined = state
+            .db
+            .client_group_combined_member_order(payload.profile_id)?;
         settings.sort_by(|a, b| {
-            a.config
-                .x
-                .cmp(&b.config.x)
-                .then_with(|| a.window_title.cmp(&b.window_title))
+            let at = a.window_title.trim();
+            let bt = b.window_title.trim();
+            let pa = combined.iter().position(|t| t == at);
+            let pb = combined.iter().position(|t| t == bt);
+            match (pa, pb) {
+                (Some(ia), Some(ib)) => ia.cmp(&ib),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => a
+                    .config
+                    .x
+                    .cmp(&b.config.x)
+                    .then_with(|| a.window_title.cmp(&b.window_title)),
+            }
         });
     }
 
@@ -1359,7 +1458,10 @@ fn build_grid_layout_preview(
             .into_iter()
             .map(|w| w.title)
             .collect();
-        settings.retain(|setting| active_titles.contains(&setting.window_title));
+        settings.retain(|setting| {
+            let st = setting.window_title.trim();
+            active_titles.iter().any(|t| t.trim() == st)
+        });
     }
 
     let cell_height = resolve_grid_cell_height(
@@ -1375,7 +1477,7 @@ fn build_grid_layout_preview(
     let (start_x, start_y) = if let Some(ref anchor_title) = payload.grid_anchor_window_title {
         let idx = settings
             .iter()
-            .position(|s| s.window_title == *anchor_title)
+            .position(|s| s.window_title.trim() == anchor_title.trim())
             .ok_or_else(|| {
                 format!(
                     "Initial thumbnail not in grid scope (title missing or filtered out): {}",

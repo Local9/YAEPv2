@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { backend } from "$services/backend";
@@ -116,9 +117,15 @@
       browserAlwaysDisplayed: loaded.browserAlwaysDisplayed ?? false,
       showFleetMotdWidget: loaded.showFleetMotdWidget ?? true,
       showIntelFeedWidget: loaded.showIntelFeedWidget ?? true,
+      showMumbleLinksWidget: loaded.showMumbleLinksWidget ?? true,
       fleetMotdAlwaysDisplayed: loaded.fleetMotdAlwaysDisplayed ?? false,
       intelFeedAlwaysDisplayed: loaded.intelFeedAlwaysDisplayed ?? false,
-      toggleHotkey: loaded.toggleHotkey ?? ""
+      mumbleLinksAlwaysDisplayed: loaded.mumbleLinksAlwaysDisplayed ?? false,
+      toggleHotkey: loaded.toggleHotkey ?? "",
+      layout: {
+        ...loaded.layout,
+        mumbleLinks: loaded.layout.mumbleLinks ?? { x: 24, y: 520, width: 200, height: 88 }
+      }
     };
   }
 
@@ -238,6 +245,18 @@
   async function onIntelFeedAlwaysDisplayedChange(v: boolean | "indeterminate") {
     if (!settings || v === "indeterminate") return;
     settings = { ...settings, intelFeedAlwaysDisplayed: v === true };
+    await persistToBackend({ successToast: false });
+  }
+
+  async function onMumbleLinksWidgetEnabledChange(v: boolean | "indeterminate") {
+    if (!settings || v === "indeterminate") return;
+    settings = { ...settings, showMumbleLinksWidget: v === true };
+    await persistToBackend({ successToast: false });
+  }
+
+  async function onMumbleLinksAlwaysDisplayedChange(v: boolean | "indeterminate") {
+    if (!settings || v === "indeterminate") return;
+    settings = { ...settings, mumbleLinksAlwaysDisplayed: v === true };
     await persistToBackend({ successToast: false });
   }
 
@@ -525,6 +544,29 @@
                     <TableCell class="align-middle font-medium">Intel Feed</TableCell>
                     <TableCell class="align-middle text-muted-foreground">
                       Shows last 50 intel lines (newest at bottom)
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell class="align-middle">
+                      <Checkbox
+                        class="cursor-pointer"
+                        checked={settings.showMumbleLinksWidget}
+                        onCheckedChange={(v) => void onMumbleLinksWidgetEnabledChange(v)}
+                      />
+                    </TableCell>
+                    <TableCell class="align-middle">
+                      <Checkbox
+                        class="cursor-pointer"
+                        checked={settings.mumbleLinksAlwaysDisplayed}
+                        disabled={!settings.showMumbleLinksWidget}
+                        onCheckedChange={(v) => void onMumbleLinksAlwaysDisplayedChange(v)}
+                      />
+                    </TableCell>
+                    <TableCell class="align-middle font-medium">Mumble links</TableCell>
+                    <TableCell class="align-middle">
+                      <Button type="button" variant="outline" size="sm" onclick={() => goto("/mumble-links")}>
+                        Edit links…
+                      </Button>
                     </TableCell>
                   </TableRow>
                 </TableBody>

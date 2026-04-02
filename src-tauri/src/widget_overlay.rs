@@ -64,6 +64,10 @@ pub fn load_settings(db: &DbService) -> Result<WidgetOverlaySettings, String> {
         .get_app_setting("WidgetOverlayShowIntelFeed".to_string())?
         .map(|v| v.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
+    let show_mumble_links_widget = db
+        .get_app_setting("WidgetOverlayShowMumbleLinks".to_string())?
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
     let widgets_suppressed = db
         .get_app_setting("WidgetOverlayWidgetsSuppressed".to_string())?
         .map(|v| v.eq_ignore_ascii_case("true"))
@@ -78,6 +82,10 @@ pub fn load_settings(db: &DbService) -> Result<WidgetOverlaySettings, String> {
         .unwrap_or(false);
     let intel_feed_always_displayed = db
         .get_app_setting("WidgetOverlayIntelFeedAlwaysDisplayed".to_string())?
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let mumble_links_always_displayed = db
+        .get_app_setting("WidgetOverlayMumbleLinksAlwaysDisplayed".to_string())?
         .map(|v| v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     let toggle_hotkey = db
@@ -107,10 +115,12 @@ pub fn load_settings(db: &DbService) -> Result<WidgetOverlaySettings, String> {
         show_browser_widget,
         show_fleet_motd_widget,
         show_intel_feed_widget,
+        show_mumble_links_widget,
         widgets_suppressed,
         browser_always_displayed,
         fleet_motd_always_displayed,
         intel_feed_always_displayed,
+        mumble_links_always_displayed,
         toggle_hotkey,
         browser_quick_links,
         browser_default_url,
@@ -164,6 +174,14 @@ pub fn save_settings(db: &DbService, settings: &WidgetOverlaySettings) -> Result
         },
     )?;
     db.set_app_setting(
+        "WidgetOverlayShowMumbleLinks".to_string(),
+        if settings.show_mumble_links_widget {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        },
+    )?;
+    db.set_app_setting(
         "WidgetOverlayWidgetsSuppressed".to_string(),
         if settings.widgets_suppressed {
             "true".to_string()
@@ -190,6 +208,14 @@ pub fn save_settings(db: &DbService, settings: &WidgetOverlaySettings) -> Result
     db.set_app_setting(
         "WidgetOverlayIntelFeedAlwaysDisplayed".to_string(),
         if settings.intel_feed_always_displayed {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        },
+    )?;
+    db.set_app_setting(
+        "WidgetOverlayMumbleLinksAlwaysDisplayed".to_string(),
+        if settings.mumble_links_always_displayed {
             "true".to_string()
         } else {
             "false".to_string()
