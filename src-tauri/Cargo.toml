@@ -32,7 +32,7 @@ regex = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # Keep 0.61.x in sync with Tauri's `windows` dependency; 0.62 diverges HWND types from tauri-runtime.
-windows = { version = "0.61", features = [
+windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_Security",
   "Win32_UI_WindowsAndMessaging",
