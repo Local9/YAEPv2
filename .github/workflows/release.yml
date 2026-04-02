@@ -1,0 +1,447 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  prepare-release:
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+      pull-requests: read
+    outputs:
+      version: ${{ steps.increment_version.outputs.version }}
+      has_changes: ${{ steps.get_last_tag.outputs.has_changes }}
+      last_tag: ${{ env.LAST_TAG }}
+      release_sha: ${{ steps.release_commit.outputs.sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.ref }}
+
+      - name: Get current version
+        id: get_version
+        run: |
+          $raw = Get-Content package.json -Raw | ConvertFrom-Json
+          $version = $raw.version
+          if ([string]::IsNullOrEmpty($version)) {
+            $version = "0.1.0"
+          }
+          Write-Host "Current version: $version"
+          echo "CURRENT_VERSION=$version" >> $env:GITHUB_ENV
+          $parts = $version -split '\.'
+          echo "MAJOR=$($parts[0])" >> $env:GITHUB_ENV
+          echo "MINOR=$($parts[1])" >> $env:GITHUB_ENV
+          echo "PATCH=$($parts[2])" >> $env:GITHUB_ENV
+
+      - name: Get last tag
+        id: get_last_tag
+        run: |
+          $ErrorActionPreference = "Continue"
+          $lastTag = ""
+          $hasChanges = "false"
+
+          Write-Host "Fetching all tags..."
+          git fetch --tags --force
+
+          $tagOutput = git tag --sort=-version:refname | Select-Object -First 1
+          if (-not [string]::IsNullOrWhiteSpace($tagOutput)) {
+            $lastTag = $tagOutput.Trim()
+            Write-Host "Found last tag: $lastTag"
+
+            $tagCommit = git rev-parse "$lastTag^{commit}" 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Warning: Could not resolve tag commit: $tagCommit"
+              Write-Host "Assuming changes exist for safety"
+              $hasChanges = "true"
+            } else {
+              $tagCommit = $tagCommit.Trim()
+              Write-Host "Tag $lastTag points to commit: $tagCommit"
+
+              $headCommit = git rev-parse HEAD 2>&1
+              if ($LASTEXITCODE -ne 0) {
+                Write-Host "Warning: Could not get HEAD commit"
+                Write-Host "Assuming changes exist for safety"
+                $hasChanges = "true"
+              } else {
+                $headCommit = $headCommit.Trim()
+                Write-Host "Current HEAD commit: $headCommit"
+
+                Write-Host "Checking for commits between $lastTag and HEAD..."
+                $commitCountOutput = git rev-list "$lastTag^{commit}..HEAD" --count 2>&1
+
+                if ($LASTEXITCODE -eq 0) {
+                  if (-not [string]::IsNullOrWhiteSpace($commitCountOutput)) {
+                    $commitCount = [int]$commitCountOutput.Trim()
+                    Write-Host "Commit count: $commitCount"
+                    if ($commitCount -gt 0) {
+                      $hasChanges = "true"
+                      Write-Host "Found $commitCount new commits since last tag"
+                    } else {
+                      Write-Host "No new commits since last tag, skipping version bump and release"
+                    }
+                  } else {
+                    Write-Host "No commit count output, checking if commits exist..."
+                    $commitList = git rev-list "$lastTag^{commit}..HEAD" 2>&1
+                    if (-not [string]::IsNullOrWhiteSpace($commitList)) {
+                      $hasChanges = "true"
+                      Write-Host "Found commits between tag and HEAD"
+                    } else {
+                      Write-Host "No new commits since last tag, skipping version bump and release"
+                    }
+                  }
+                } else {
+                  Write-Host "Warning: git rev-list failed with exit code $LASTEXITCODE"
+                  Write-Host "Output: $commitCountOutput"
+                  Write-Host "Assuming changes exist for safety"
+                  $hasChanges = "true"
+                }
+              }
+            }
+          } else {
+            Write-Host "No existing tags found - this will be the first release"
+            $hasChanges = "true"
+          }
+
+          Write-Host "Last tag: $lastTag (empty if none)"
+          Write-Host "Has changes: $hasChanges"
+          echo "has_changes=$hasChanges" >> $env:GITHUB_OUTPUT
+          echo "LAST_TAG=$lastTag" >> $env:GITHUB_ENV
+
+      - name: Increment version
+        id: increment_version
+        if: steps.get_last_tag.outputs.has_changes == 'true'
+        run: |
+          $patch = [int]$env:PATCH + 1
+          $newVersion = "$env:MAJOR.$env:MINOR.$patch"
+          Write-Host "New version: $newVersion"
+          echo "version=$newVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Update version in project files
+        if: steps.get_last_tag.outputs.has_changes == 'true'
+        run: |
+          $newVersion = "${{ steps.increment_version.outputs.version }}"
+
+          $pkgPath = "package.json"
+          $pkgRaw = Get-Content $pkgPath -Raw
+          $pkgRaw = $pkgRaw -replace '"version"\s*:\s*"[^"]+"', "`"version`": `"$newVersion`""
+          Set-Content $pkgPath -Value $pkgRaw -NoNewline
+
+          $tauriPath = "src-tauri/tauri.conf.json"
+          $tauriRaw = Get-Content $tauriPath -Raw
+          $tauriRaw = $tauriRaw -replace '"version"\s*:\s*"[^"]+"', "`"version`": `"$newVersion`""
+          Set-Content $tauriPath -Value $tauriRaw -NoNewline
+
+          $cargoPath = "src-tauri/Cargo.toml"
+          $cargoRaw = Get-Content $cargoPath -Raw
+          $cargoRaw = $cargoRaw -replace '(?m)^version = "[^"]+"', "version = `"$newVersion`""
+          Set-Content $cargoPath -Value $cargoRaw -NoNewline
+
+      - name: Setup Rust (refresh Cargo.lock)
+        if: steps.get_last_tag.outputs.has_changes == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Refresh Cargo.lock
+        if: steps.get_last_tag.outputs.has_changes == 'true'
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Configure Git
+        if: steps.get_last_tag.outputs.has_changes == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit version bump
+        if: steps.get_last_tag.outputs.has_changes == 'true'
+        run: |
+          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+          git commit -m "Bump version to ${{ steps.increment_version.outputs.version }}" || exit 0
+
+      - name: Push version bump commit
+        if: steps.get_last_tag.outputs.has_changes == 'true'
+        run: |
+          git push origin ${{ github.ref_name }}
+
+      - name: Create git tag
+        if: steps.get_last_tag.outputs.has_changes == 'true'
+        run: |
+          $version = "${{ steps.increment_version.outputs.version }}"
+          git tag -a "v$version" -m "Release v$version"
+          git push origin "v$version"
+
+      - name: Record release commit SHA
+        id: release_commit
+        if: steps.get_last_tag.outputs.has_changes == 'true'
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
+
+  build:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.has_changes == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare-release.outputs.version }}
+      PACKAGE_NAME: YAEP-v${{ needs.prepare-release.outputs.version }}-win-x64.zip
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare-release.outputs.release_sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Tauri app
+        run: pnpm tauri build
+
+      - name: Create release package (Windows)
+        run: |
+          $bundleRoot = "src-tauri/target/release/bundle"
+          $files = @()
+          foreach ($sub in @("msi", "nsis")) {
+            $p = Join-Path $bundleRoot $sub
+            if (Test-Path $p) {
+              $files += Get-ChildItem -Path $p -File
+            }
+          }
+          if ($files.Count -eq 0) {
+            Write-Error "No Windows bundle outputs found under $bundleRoot"
+            if (Test-Path $bundleRoot) { Get-ChildItem -Recurse $bundleRoot }
+            exit 1
+          }
+          $paths = $files | ForEach-Object { $_.FullName }
+          Compress-Archive -Path $paths -DestinationPath "${{ env.PACKAGE_NAME }}" -Force
+          Write-Host "Created package: ${{ env.PACKAGE_NAME }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-win-x64
+          path: ${{ env.PACKAGE_NAME }}
+          retention-days: 7
+
+  create-release:
+    needs: [prepare-release, build]
+    if: needs.prepare-release.outputs.has_changes == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare-release.outputs.version }}
+      WINDOWS_PACKAGE: YAEP-v${{ needs.prepare-release.outputs.version }}-win-x64.zip
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: v${{ needs.prepare-release.outputs.version }}
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: ./artifacts
+          merge-multiple: true
+
+      - name: Generate release notes
+        id: generate_release_notes
+        uses: actions/github-script@v7
+        env:
+          LAST_TAG: ${{ needs.prepare-release.outputs.last_tag }}
+          VERSION: ${{ env.VERSION }}
+        with:
+          script: |
+            const fs = require('fs');
+            const lastTag = process.env.LAST_TAG;
+            const version = process.env.VERSION;
+            const params = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: `v${version}`,
+            };
+
+            if (lastTag && lastTag.trim() !== '') {
+              params.previous_tag_name = lastTag;
+            }
+
+            const { data: releaseNotes } = await github.rest.repos.generateReleaseNotes(params);
+            core.setOutput('body', releaseNotes.body);
+            fs.writeFileSync('CHANGELOG.md', releaseNotes.body);
+
+      - name: Scan Windows package with VirusTotal
+        id: virustotal_scan_windows
+        continue-on-error: true
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: |
+          $zipFile = "artifacts\${{ env.WINDOWS_PACKAGE }}"
+          $apiKey = $env:VT_API_KEY
+          $maxDirectUpload = 32 * 1024 * 1024
+          $maxAttempts = 30
+
+          if ([string]::IsNullOrWhiteSpace($apiKey)) {
+            Write-Host "VT_API_KEY secret not set, skipping VirusTotal scan"
+            echo "scan_url=" >> $env:GITHUB_OUTPUT
+            echo "scan_id=" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          if (-not (Test-Path $zipFile)) {
+            Write-Host "Windows package not found at $zipFile, skipping VirusTotal scan"
+            echo "scan_url=" >> $env:GITHUB_OUTPUT
+            echo "scan_id=" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          Write-Host "Uploading $zipFile to VirusTotal..."
+
+          $fileSize = (Get-Item $zipFile).Length
+          if ($fileSize -le $maxDirectUpload) {
+            $response = curl.exe -s -X POST "https://www.virustotal.com/api/v3/files" `
+              -H "x-apikey: $apiKey" `
+              -F "file=@$zipFile"
+          } else {
+            Write-Host "File is larger than 32 MB, requesting upload URL..."
+            $uploadUrlResponse = curl.exe -s -X GET "https://www.virustotal.com/api/v3/files/upload_url" `
+              -H "x-apikey: $apiKey"
+            $uploadUrl = ($uploadUrlResponse | ConvertFrom-Json).data
+            Write-Host "Upload URL obtained, uploading file..."
+            $response = curl.exe -s -X POST "$uploadUrl" `
+              -H "x-apikey: $apiKey" `
+              -F "file=@$zipFile"
+          }
+
+          $jsonResponse = $response | ConvertFrom-Json
+          $analysisId = $jsonResponse.data.id
+          Write-Host "File uploaded. Analysis ID: $analysisId"
+
+          $attempt = 0
+          $analysisComplete = $false
+
+          function Get-FileHash {
+            param($analysisData)
+            $hash = $null
+            $sources = @(
+              { $analysisData.meta.file_info.sha256 },
+              { if ($analysisData.data.links.item -match '/files/([a-f0-9]{64})$') { $matches[1] } },
+              { $analysisData.data.relationships.file.data.id },
+              { $analysisData.data.attributes.sha256 }
+            )
+            foreach ($source in $sources) {
+              $hash = & $source
+              if (-not [string]::IsNullOrWhiteSpace($hash)) { break }
+            }
+            return $hash
+          }
+
+          while ($attempt -lt $maxAttempts -and -not $analysisComplete) {
+            Start-Sleep -Seconds 10
+            $attempt++
+            Write-Host "Checking analysis status (attempt $attempt/$maxAttempts)..."
+
+            $analysisResponse = curl.exe -s -X GET "https://www.virustotal.com/api/v3/analyses/$analysisId" `
+              -H "x-apikey: $apiKey"
+            $analysisData = $analysisResponse | ConvertFrom-Json
+
+            if ($analysisData.data.attributes.status -eq "completed") {
+              $analysisComplete = $true
+              $stats = $analysisData.data.attributes.stats
+              $harmless = $stats.harmless
+              $malicious = $stats.malicious
+              $suspicious = $stats.suspicious
+              $undetected = $stats.undetected
+              $total = $harmless + $malicious + $suspicious + $undetected
+
+              $fileHash = Get-FileHash $analysisData
+              if ([string]::IsNullOrWhiteSpace($fileHash)) {
+                Write-Host "Warning: Could not extract file hash from analysis response"
+                $fileHash = "unknown"
+              }
+
+              $permalink = "https://www.virustotal.com/gui/file/$fileHash"
+
+              if ($malicious -gt 0) {
+                $verdict = "$malicious/$total engines detected threats"
+              } elseif ($suspicious -gt 0) {
+                $verdict = "$suspicious/$total engines flagged as suspicious"
+              } else {
+                $verdict = "Clean ($harmless/$total engines found no threats)"
+              }
+
+              Write-Host "Analysis complete!"
+              Write-Host "File Hash: $fileHash"
+              Write-Host "Verdict: $verdict"
+              Write-Host "Permalink: $permalink"
+
+              echo "scan_url=$permalink" >> $env:GITHUB_OUTPUT
+              echo "file_hash=$fileHash" >> $env:GITHUB_OUTPUT
+              echo "scan_id=$analysisId" >> $env:GITHUB_OUTPUT
+              echo "verdict=$verdict" >> $env:GITHUB_OUTPUT
+              echo "stats=Harmless: $harmless, Malicious: $malicious, Suspicious: $suspicious, Undetected: $undetected" >> $env:GITHUB_OUTPUT
+            }
+          }
+
+          if (-not $analysisComplete) {
+            Write-Host "Analysis did not complete within timeout period"
+            echo "scan_url=" >> $env:GITHUB_OUTPUT
+            echo "scan_id=$analysisId" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Update release notes with VirusTotal scan
+        if: steps.virustotal_scan_windows.outcome == 'success' && steps.virustotal_scan_windows.outputs.scan_url
+        run: |
+          $vtLink = "${{ steps.virustotal_scan_windows.outputs.scan_url }}"
+          $vtFileHash = "${{ steps.virustotal_scan_windows.outputs.file_hash }}"
+          $vtVerdict = "${{ steps.virustotal_scan_windows.outputs.verdict }}"
+          $vtStats = "${{ steps.virustotal_scan_windows.outputs.stats }}"
+
+          if ([string]::IsNullOrWhiteSpace($vtLink) -or $vtLink -eq "https://www.virustotal.com/gui/file/") {
+            Write-Host "No valid VirusTotal scan URL available, skipping update"
+            exit 0
+          }
+
+          $changelog = Get-Content CHANGELOG.md -Raw
+          $fileHashInfo = ""
+          if (-not [string]::IsNullOrWhiteSpace($vtFileHash) -and $vtFileHash -ne "unknown") {
+            $fileHashInfo = "`n- **File Hash (SHA256)**: $vtFileHash"
+          }
+          $vtSection = "`n`n## Security Scan (Windows)`n`nThis release has been scanned with VirusTotal for your safety.`n`n- **Scan Result**: $vtVerdict`n- **Statistics**: $vtStats$fileHashInfo`n`n[View full scan report]($vtLink)"
+
+          $updatedChangelog = $changelog + $vtSection
+          Set-Content CHANGELOG.md -Value $updatedChangelog -NoNewline
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
+          body_path: CHANGELOG.md
+          files: |
+            artifacts/${{ env.WINDOWS_PACKAGE }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
