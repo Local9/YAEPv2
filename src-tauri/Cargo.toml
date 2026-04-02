@@ -1,6 +1,6 @@
 [package]
 name = "yaep-rust"
-version = "0.1.0"
+version = "0.1.1"
 description = "YAEP rebuild in Tauri + SvelteKit"
 edition = "2021"
 
