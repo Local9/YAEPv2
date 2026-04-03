@@ -82,13 +82,14 @@
     void action();
   }
 
-  async function refresh() {
+  async function refresh(): Promise<boolean> {
     try {
       tree = await backend.getMumbleTree();
       error = "";
+      return true;
     } catch {
       error = userSafeMumbleErrorMessage();
-      tree = null;
+      return false;
     }
   }
 
@@ -212,8 +213,8 @@
         folderDraftIconKey === "" ? null : folderDraftIconKey
       );
       status = "Folder created";
-      cancelFolderDraft();
-      await refresh();
+      const ok = await refresh();
+      if (ok) cancelFolderDraft();
     } catch {
       error = userSafeMumbleErrorMessage();
     }
@@ -249,8 +250,8 @@
     try {
       await backend.createMumbleLink(name, url, ord, "", linkDraft.serverGroupId, linkDraft.folderId);
       status = "Link created";
-      cancelLinkDraft();
-      await refresh();
+      const ok = await refresh();
+      if (ok) cancelLinkDraft();
     } catch {
       error = userSafeMumbleErrorMessage();
     }
