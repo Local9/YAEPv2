@@ -137,7 +137,7 @@
 
 <div
   bind:this={rootEl}
-  class="widget-shell touch-none select-none"
+  class="widget-shell absolute z-0 box-border touch-none select-none overflow-hidden rounded-lg border border-border bg-card text-card-foreground flex flex-col shadow-[0_1px_2px_oklch(0_0_0/0.12),0_8px_24px_oklch(0_0_0/0.2)]"
   style:left="{frame.x}px"
   style:top="{frame.y}px"
   style:width="{frame.width}px"
@@ -146,186 +146,49 @@
   aria-label={label}
 >
   <div
-    class="widget-title-bar"
+    class="widget-title-bar flex shrink-0 items-center gap-2 px-2 py-[5px] min-h-[30px] box-border bg-muted text-foreground border-b border-border cursor-grab select-none active:cursor-grabbing"
     role="toolbar"
     tabindex="-1"
     onpointerdown={onTitleBarPointerDown}
   >
-    <span class="widget-drag-handle" aria-hidden="true" title="Drag to move">
-      <GripVerticalIcon />
+    <span
+      class="widget-drag-handle flex shrink-0 items-center justify-center mr-0.5 text-muted-foreground opacity-[0.88] pointer-events-none"
+      aria-hidden="true"
+      title="Drag to move"
+    >
+      <GripVerticalIcon class="h-3.5 w-3.5" />
     </span>
-    <span class="widget-title-text">{title}</span>
-    <span class="widget-title-flex"></span>
+    <span class="widget-title-text shrink-0 text-[12px] font-semibold tracking-[0.01em] text-foreground pointer-events-none">{title}</span>
+    <span class="widget-title-flex flex-1 min-w-2 pointer-events-none"></span>
     {#if showPin}
       <button
         type="button"
-        class="widget-pin"
+        class="widget-pin flex shrink-0 items-center justify-center w-6 h-6 p-0 rounded-md border border-border bg-background text-muted-foreground cursor-pointer hover:bg-accent hover:text-accent-foreground aria-pressed:text-primary aria-pressed:border-[color-mix(in_oklch,var(--primary)_45%,var(--border))] aria-pressed:[background:color-mix(in_oklch,var(--primary)_12%,var(--background))]"
         title={pinned ? "Unpin widget (hide when widgets are toggled off)" : "Pin widget (stay visible when widgets are toggled off)"}
         aria-label={pinned ? "Unpin widget" : "Pin widget"}
         aria-pressed={pinned}
         onclick={togglePinned}
         onpointerdown={stopDragChain}
       >
-        <PinIcon class="widget-pin-icon" strokeWidth={pinned ? 2.25 : 1.75} />
+        <PinIcon class="widget-pin-icon h-3.5 w-3.5" strokeWidth={pinned ? 2.25 : 1.75} />
       </button>
     {/if}
   </div>
 
   {#if toolbar}
-    <div class="widget-toolbar-slot">
+    <div class="widget-toolbar-slot shrink-0">
       {@render toolbar()}
     </div>
   {/if}
 
-  <div class="widget-body">
+  <div class="widget-body flex-1 min-h-0 flex flex-col overflow-hidden">
     {@render children()}
   </div>
 
   <button
     type="button"
-    class="widget-resize-grip"
+    class="widget-resize-grip absolute right-[2px] bottom-[2px] z-2 w-[18px] h-[18px] p-0 border-0 rounded-[2px] bg-[linear-gradient(135deg,transparent_50%,color-mix(in_oklch,var(--muted-foreground)_55%,transparent)_50%)] hover:bg-[linear-gradient(135deg,transparent_45%,color-mix(in_oklch,var(--primary)_65%,transparent)_45%)] focus-visible:bg-[linear-gradient(135deg,transparent_45%,color-mix(in_oklch,var(--primary)_65%,transparent)_45%)] focus-visible:outline-none cursor-se-resize touch-none"
     aria-label="Resize widget"
     onpointerdown={onResizePointerDown}
   ></button>
 </div>
-
-<style>
-  .widget-shell {
-    position: absolute;
-    z-index: 0;
-    box-sizing: border-box;
-    pointer-events: auto;
-    overflow: hidden;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--card);
-    color: var(--card-foreground);
-    display: flex;
-    flex-direction: column;
-    box-shadow:
-      0 1px 2px oklch(0 0 0 / 0.12),
-      0 8px 24px oklch(0 0 0 / 0.2);
-  }
-
-  .widget-title-bar {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    min-height: 30px;
-    box-sizing: border-box;
-    background: var(--muted);
-    color: var(--foreground);
-    border-bottom: 1px solid var(--border);
-    cursor: grab;
-    user-select: none;
-  }
-
-  .widget-title-bar:active {
-    cursor: grabbing;
-  }
-
-  .widget-drag-handle {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    margin-right: 2px;
-    color: var(--muted-foreground);
-    opacity: 0.88;
-    pointer-events: none;
-  }
-
-  .widget-drag-handle :global(svg) {
-    width: 0.875rem;
-    height: 0.875rem;
-  }
-
-  .widget-title-text {
-    flex-shrink: 0;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    color: var(--foreground);
-    pointer-events: none;
-  }
-
-  .widget-title-flex {
-    flex: 1;
-    min-width: 8px;
-    pointer-events: none;
-  }
-
-  .widget-pin {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--background);
-    color: var(--muted-foreground);
-    cursor: pointer;
-  }
-
-  .widget-pin:hover {
-    background: var(--accent);
-    color: var(--accent-foreground);
-  }
-
-  .widget-pin[aria-pressed="true"] {
-    color: var(--primary);
-    border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
-    background: color-mix(in oklch, var(--primary) 12%, var(--background));
-  }
-
-  .widget-pin :global(.widget-pin-icon) {
-    width: 0.875rem;
-    height: 0.875rem;
-  }
-
-  .widget-toolbar-slot {
-    flex-shrink: 0;
-  }
-
-  .widget-body {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .widget-resize-grip {
-    position: absolute;
-    right: 2px;
-    bottom: 2px;
-    z-index: 2;
-    width: 18px;
-    height: 18px;
-    padding: 0;
-    border: none;
-    border-radius: 2px;
-    background: linear-gradient(
-      135deg,
-      transparent 50%,
-      color-mix(in oklch, var(--muted-foreground) 55%, transparent) 50%
-    );
-    cursor: se-resize;
-    touch-action: none;
-  }
-
-  .widget-resize-grip:hover,
-  .widget-resize-grip:focus-visible {
-    background: linear-gradient(
-      135deg,
-      transparent 45%,
-      color-mix(in oklch, var(--primary) 65%, transparent) 45%
-    );
-    outline: none;
-  }
-</style>

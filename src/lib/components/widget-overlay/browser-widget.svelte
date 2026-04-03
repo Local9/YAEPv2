@@ -73,20 +73,24 @@
   onPinnedPersist={onPinnedPersist}
 >
   {#snippet toolbar()}
-    <div class="browser-toolbar" role="group" aria-label="Address and navigation">
+    <div
+      class="browser-toolbar flex shrink-0 items-center gap-1.5 bg-muted text-foreground border-b border-border px-[10px] py-2"
+      role="group"
+      aria-label="Address and navigation"
+    >
       {#if hasPage}
         <button
           type="button"
-          class="browser-home"
+          class="browser-home flex shrink-0 items-center justify-center p-[4px] rounded border border-border bg-background text-foreground cursor-pointer hover:bg-accent hover:text-accent-foreground"
           title="Home (shortcuts)"
           aria-label="Home, show shortcuts"
           onclick={goHome}
         >
-          <HouseIcon class="browser-home-icon" aria-hidden="true" />
+          <HouseIcon class="browser-home-icon h-4 w-4" aria-hidden="true" />
         </button>
       {/if}
       <input
-        class="browser-url-input"
+        class="browser-url-input min-w-0 flex-1 rounded border border-border bg-background px-2 py-[6px] text-[12px] font-[ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace] text-foreground outline-none focus:border-ring focus:outline-none focus:shadow-[0_0_0_2px_color-mix(in_oklch,var(--ring)_35%,transparent)]"
         type="text"
         spellcheck="false"
         autocomplete="off"
@@ -95,26 +99,36 @@
         bind:value={urlDraft}
         onkeydown={onUrlKeydown}
       />
-      <button type="button" class="browser-go" onclick={onNavigate}>Go</button>
+      <button
+        type="button"
+        class="browser-go shrink-0 rounded border border-border bg-secondary px-3 py-[5px] text-[12px] font-medium text-secondary-foreground cursor-pointer hover:bg-accent hover:text-accent-foreground"
+        onclick={onNavigate}
+      >
+        Go
+      </button>
     </div>
   {/snippet}
 
   {#snippet children()}
     {#if hasPage}
       <iframe
-        class="browser-frame"
+        class="browser-frame block flex-1 min-h-0 w-full border-0 bg-background"
         title="Browser widget content"
         src={browser.url}
         referrerpolicy="no-referrer-when-downgrade"
       ></iframe>
     {:else}
-      <div class="browser-start" aria-label="Shortcut links">
-        <p class="browser-start-lead">Open a page</p>
-        <div class="browser-quick-links">
+      <div class="browser-start flex-1 min-h-0 overflow-auto bg-background pt-4 pb-3 px-[14px]" aria-label="Shortcut links">
+        <p class="browser-start-lead m-0 mb-3 text-[13px] font-semibold text-foreground">Open a page</p>
+        <div class="browser-quick-links grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2.5">
           {#each quickLinks as link (link.id)}
-            <button type="button" class="browser-tile" onclick={() => openQuickLink(link)}>
-              <span class="browser-tile-title">{link.title}</span>
-              <span class="browser-tile-url">{link.url}</span>
+            <button
+              type="button"
+              class="browser-tile flex min-h-[72px] flex-col items-start justify-center gap-1 rounded-lg border border-border bg-card text-card-foreground text-left cursor-pointer p-[10px_12px] transition-[background-color,border-color] duration-120 ease-in-out hover:border-[color-mix(in_oklch,var(--ring)_50%,var(--border))] hover:[background:color-mix(in_oklch,var(--accent)_12%,var(--card))]"
+              onclick={() => openQuickLink(link)}
+            >
+              <span class="browser-tile-title text-[13px] font-semibold leading-tight">{link.title}</span>
+              <span class="browser-tile-url truncate text-[10px] leading-[1.3] text-muted-foreground">{link.url}</span>
             </button>
           {/each}
         </div>
@@ -124,147 +138,11 @@
 </WidgetWrapper>
 
 <style>
-  .browser-toolbar {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 10px;
-    background: var(--muted);
-    color: var(--foreground);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .browser-home {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background: var(--background);
-    color: var(--foreground);
-    cursor: pointer;
-  }
-
-  .browser-home:hover {
-    background: var(--accent);
-    color: var(--accent-foreground);
-  }
-
-  .browser-home :global(.browser-home-icon) {
-    width: 1rem;
-    height: 1rem;
-  }
-
-  .browser-url-input {
-    min-width: 0;
-    flex: 1;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background: var(--background);
-    padding: 6px 8px;
-    font-size: 12px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    color: var(--foreground);
-    outline: none;
-  }
-
-  .browser-url-input:focus {
-    border-color: var(--ring);
-    box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 35%, transparent);
-  }
-
-  .browser-go {
-    flex-shrink: 0;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background: var(--secondary);
-    padding: 5px 12px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--secondary-foreground);
-    cursor: pointer;
-  }
-
-  .browser-go:hover {
-    background: var(--accent);
-    color: var(--accent-foreground);
-  }
-
-  .browser-frame {
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-    border: 0;
-    background: var(--background);
-  }
-
   :global(html.dark) .browser-frame {
     color-scheme: dark;
   }
 
   :global(html:not(.dark)) .browser-frame {
     color-scheme: light;
-  }
-
-  .browser-start {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    padding: 16px 14px 12px;
-    background: var(--background);
-  }
-
-  .browser-start-lead {
-    margin: 0 0 12px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--foreground);
-  }
-
-  .browser-quick-links {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 10px;
-  }
-
-  .browser-tile {
-    display: flex;
-    min-height: 72px;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 4px;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--card);
-    color: var(--card-foreground);
-    text-align: left;
-    cursor: pointer;
-    transition: background 0.12s ease, border-color 0.12s ease;
-  }
-
-  .browser-tile:hover {
-    border-color: color-mix(in oklch, var(--ring) 50%, var(--border));
-    background: color-mix(in oklch, var(--accent) 12%, var(--card));
-  }
-
-  .browser-tile-title {
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 1.25;
-  }
-
-  .browser-tile-url {
-    max-width: 100%;
-    font-size: 10px;
-    line-height: 1.3;
-    color: var(--muted-foreground);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 </style>

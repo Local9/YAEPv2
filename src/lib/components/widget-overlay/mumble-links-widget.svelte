@@ -206,7 +206,7 @@
   {@const childFolders = foldersForParent(group.id, folder.id)}
   <Menubar.Menu value="mumble-g{group.id}-f{folder.id}">
     <Menubar.Trigger
-      class="border-input bg-secondary text-secondary-foreground hover:bg-muted aria-expanded:bg-muted mumble-folder-trigger max-w-full min-w-0 gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-xs"
+      class="border-input bg-secondary text-secondary-foreground hover:bg-muted aria-expanded:bg-muted mumble-folder-trigger min-h-6 leading-[1.2] max-w-full min-w-0 gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-xs"
       aria-label="Mumble folder {folder.name}"
     >
       <MumbleFolderIcon iconKey={folder.iconKey ?? null} class="size-3.5 shrink-0" />
@@ -245,7 +245,7 @@
   {@const rootLinks = linksForFolder(group.id, null)}
   <Menubar.Menu value="mumble-g{group.id}-root">
     <Menubar.Trigger
-      class="border-input bg-secondary text-secondary-foreground hover:bg-muted aria-expanded:bg-muted mumble-folder-trigger max-w-full min-w-0 gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-xs"
+      class="border-input bg-secondary text-secondary-foreground hover:bg-muted aria-expanded:bg-muted mumble-folder-trigger min-h-6 leading-[1.2] max-w-full min-w-0 gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-xs"
       aria-label="Mumble links for {formatMumbleServerGroupDisplayName(group.name)}"
     >
       <HeadphonesIcon class="size-3.5 shrink-0" aria-hidden="true" />
@@ -268,7 +268,7 @@
 
 <div
   bind:this={rootEl}
-  class="mumble-chip-shell touch-none select-none"
+  class="mumble-chip-shell absolute z-0 box-border touch-none select-none pointer-events-auto rounded-md border border-border bg-card text-card-foreground flex flex-col justify-center shadow-[0_1px_2px_oklch(0_0_0/0.12),0_6px_18px_oklch(0_0_0/0.18)]"
   style:left="{frame.x}px"
   style:top="{frame.y}px"
   style:width="{Math.max(MIN_SHELL_WIDTH, frame.width)}px"
@@ -276,14 +276,14 @@
   role="application"
   aria-label="Mumble links"
 >
-  <div class="mumble-chip-row">
+  <div class="mumble-chip-row flex items-center gap-[3px] box-border p-[2px] pl-[4px] min-h-0 flex-1 min-w-0">
     <div
-      class="mumble-chip-grip"
+      class="mumble-chip-grip flex shrink-0 items-center justify-center w-[18px] h-[22px] rounded-[4px] text-muted-foreground cursor-grab select-none active:cursor-grabbing"
       role="presentation"
       title="Drag to move"
       onpointerdown={onGripPointerDown}
     >
-      <GripVerticalIcon class="mumble-chip-grip-icon" aria-hidden="true" />
+      <GripVerticalIcon class="mumble-chip-grip-icon h-3 w-3" aria-hidden="true" />
     </div>
 
     <div class="mumble-chip-menu flex min-w-0 flex-1">
@@ -291,7 +291,7 @@
         {#if sortedGroups.length === 0}
           <Menubar.Menu value="mumble-empty">
             <Menubar.Trigger
-              class="text-muted-foreground mumble-folder-trigger max-w-full min-w-0 gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium"
+              class="text-muted-foreground mumble-folder-trigger min-h-6 leading-[1.2] max-w-full min-w-0 gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium"
               disabled
             >
               <HeadphonesIcon class="size-3.5 shrink-0" aria-hidden="true" />
@@ -311,7 +311,7 @@
             {:else}
               <Menubar.Menu value="mumble-g{group.id}-empty">
                 <Menubar.Trigger
-                  class="text-muted-foreground mumble-folder-trigger max-w-full min-w-0 gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium"
+                  class="text-muted-foreground mumble-folder-trigger min-h-6 leading-[1.2] max-w-full min-w-0 gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium"
                   disabled
                 >
                   <HeadphonesIcon class="size-3.5 shrink-0" aria-hidden="true" />
@@ -326,14 +326,14 @@
 
     <button
       type="button"
-      class="mumble-chip-pin"
+      class="mumble-chip-pin flex shrink-0 items-center justify-center w-6 h-6 p-0 rounded-[4px] border border-border bg-background text-muted-foreground cursor-pointer hover:bg-accent hover:text-accent-foreground aria-pressed:text-primary aria-pressed:border-[color-mix(in_oklch,var(--primary)_45%,var(--border))] aria-pressed:[background:color-mix(in_oklch,var(--primary)_12%,var(--background))]"
       title={pinned ? "Unpin widget (hide when widgets are toggled off)" : "Pin widget (stay visible when widgets are toggled off)"}
       aria-label={pinned ? "Unpin widget" : "Pin widget"}
       aria-pressed={pinned}
       onclick={togglePinned}
       onpointerdown={stopDragChain}
     >
-      <PinIcon class="mumble-chip-pin-icon" strokeWidth={pinned ? 2.25 : 1.75} />
+      <PinIcon class="mumble-chip-pin-icon h-3 w-3" strokeWidth={pinned ? 2.25 : 1.75} />
     </button>
 
     <button
@@ -347,61 +347,6 @@
 </div>
 
 <style>
-  .mumble-chip-shell {
-    position: absolute;
-    z-index: 0;
-    box-sizing: border-box;
-    pointer-events: auto;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--card);
-    color: var(--card-foreground);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    box-shadow:
-      0 1px 2px oklch(0 0 0 / 0.12),
-      0 6px 18px oklch(0 0 0 / 0.18);
-  }
-
-  .mumble-chip-row {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    padding: 2px 2px 2px 4px;
-    box-sizing: border-box;
-    min-height: 0;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .mumble-chip-grip {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 22px;
-    border-radius: 4px;
-    color: var(--muted-foreground);
-    cursor: grab;
-    user-select: none;
-  }
-
-  .mumble-chip-grip:active {
-    cursor: grabbing;
-  }
-
-  .mumble-chip-grip :global(.mumble-chip-grip-icon) {
-    width: 0.75rem;
-    height: 0.75rem;
-  }
-
-  .mumble-chip-menu :global(.mumble-folder-trigger) {
-    min-height: 1.5rem;
-    line-height: 1.2;
-  }
-
   /* Flatten default menubar chrome; one menu per root folder (or per-server fallback). */
   .mumble-chip-menu :global([data-slot="menubar"]) {
     height: auto;
@@ -451,36 +396,5 @@
       transparent 100%
     );
     outline: none;
-  }
-
-  .mumble-chip-pin {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background: var(--background);
-    color: var(--muted-foreground);
-    cursor: pointer;
-  }
-
-  .mumble-chip-pin:hover {
-    background: var(--accent);
-    color: var(--accent-foreground);
-  }
-
-  .mumble-chip-pin[aria-pressed="true"] {
-    color: var(--primary);
-    border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
-    background: color-mix(in oklch, var(--primary) 12%, var(--background));
-  }
-
-  .mumble-chip-pin :global(.mumble-chip-pin-icon) {
-    width: 0.75rem;
-    height: 0.75rem;
   }
 </style>
