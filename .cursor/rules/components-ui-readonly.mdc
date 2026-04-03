@@ -1,0 +1,10 @@
+---
+description: Do not modify shadcn-svelte primitives under src/lib/components/ui
+alwaysApply: true
+---
+
+# Read-only `components/ui` (shadcn-svelte)
+
+- **Never edit, replace, or delete** any file under `src/lib/components/ui/`. Treat this tree as vendor-managed primitives.
+- Do not suggest or apply patches to paths matching `src/lib/components/ui/**`.
+- If behavior or styling must change: compose or wrap these components from `src/lib/components/` (outside `ui/`), adjust usage at call sites, or ask the maintainer to regenerate or update via the shadcn-svelte CLI rather than hand-editing `ui/`.

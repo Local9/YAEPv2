@@ -6,6 +6,7 @@ alwaysApply: false
 
 # Shadcn UI (project components)
 
+- Do not modify files under `src/lib/components/ui/`; see `components-ui-readonly.mdc`.
 - Use components from `$lib/components/ui/` (shadcn-svelte) for interactive and structural UI: `Button`, `Input`, `Checkbox`, `Switch`, `Select`, `Table`, `Alert`, `Card`, `Separator`, `Label`, `Field` / `FieldLabel` / `FieldContent` (and related field pieces), `Tooltip`, etc.
 - Avoid hand-rolled styled `<button>`, raw data `<table>` markup for app tables, ad-hoc `<label class="grid ...">` stacks for labeled controls, and plain `<hr>` section dividers when `Separator` fits.
 - Exceptions: semantic navigation stays as appropriate (`<a href>` in sidebar), and special surfaces like the transparent `thumbnail-overlay` route may use plain `div` chrome without `Card`.

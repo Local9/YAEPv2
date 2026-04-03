@@ -149,3 +149,11 @@ body {
 @custom-variant data-horizontal (&:where([data-orientation="horizontal"]));
 
 @custom-variant data-vertical (&:where([data-orientation="vertical"]));
+
+/* svelte-sonner: error toasts (requires richColors on Toaster in +layout.svelte) */
+[data-sonner-toaster][data-sonner-theme="light"],
+[data-sonner-toaster][data-sonner-theme="dark"] {
+  --error-bg: color-mix(in oklch, var(--destructive) 14%, var(--background));
+  --error-border: color-mix(in oklch, var(--destructive) 42%, var(--border));
+  --error-text: var(--destructive);
+}

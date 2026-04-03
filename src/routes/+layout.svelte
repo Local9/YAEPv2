@@ -108,7 +108,7 @@
   </div>
 {:else}
   <ModeWatcher />
-  <Toaster />
+  <Toaster richColors />
   <Sidebar.Provider>
     <Sidebar.Root collapsible="icon" variant="sidebar">
       <Sidebar.Header>
