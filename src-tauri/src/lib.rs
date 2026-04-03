@@ -1,6 +1,8 @@
 mod db;
 mod diag;
 mod dwm;
+mod eve_preview_windows;
+mod main_thread;
 mod error;
 mod eve_chat_log_service;
 mod eve_profile_tools;
@@ -46,6 +48,14 @@ use crate::widget_service::{WidgetService, WidgetSnapshot};
 use crate::windows::WindowService;
 
 const GENERIC_OPERATION_ERROR: &str = "Operation failed. Check diagnostics for details.";
+
+fn diag_settings_db_path(db: &DbService) -> String {
+    db.settings_db_path()
+        .canonicalize()
+        .unwrap_or_else(|_| db.settings_db_path().to_path_buf())
+        .display()
+        .to_string()
+}
 
 pub struct AppState {
     db: Arc<DbService>,
@@ -1239,6 +1249,17 @@ fn widget_overlay_toggle(state: State<'_, AppState>, app_handle: AppHandle) -> R
 }
 
 fn refresh_runtime_after_settings_import(state: &AppState, app_handle: &AppHandle) {
+    diag::trace(
+        "settings_import",
+        &format!(
+            "refresh_runtime_after_settings_import begin db={}",
+            diag_settings_db_path(state.db.as_ref())
+        ),
+    );
+    diag::trace(
+        "settings_import",
+        "refresh_runtime_after_settings_import: thumbnail_service.stop + eve_chat_logs.stop",
+    );
     state.thumbnail_service.stop();
     state.eve_chat_logs.stop();
     let app_for_thumbnails = app_handle.clone();
@@ -1253,15 +1274,78 @@ fn refresh_runtime_after_settings_import(state: &AppState, app_handle: &AppHandl
         state.db.clone(),
         state.widget_service.clone(),
     );
+    diag::trace(
+        "settings_import",
+        "refresh_runtime_after_settings_import: thumbnail_service.start + eve_chat_logs.start done",
+    );
+
+    // Reconcile DWM hosts with imported SQLite: drop stale PIDs, re-register every live preview
+    // client so `ThumbnailSettings` / defaults apply (monitor may not call register when titles
+    // unchanged).
+    #[cfg(target_os = "windows")]
+    {
+        use sysinfo::System;
+        let mut sys = System::new_all();
+        if let Some(preview) = crate::eve_preview_windows::try_list_preview_eve_windows(
+            state.db.as_ref(),
+            state.window_service.as_ref(),
+            &mut sys,
+        ) {
+            diag::trace(
+                "settings_import",
+                &format!(
+                    "DWM reconcile: {} EVE preview window(s) -> prune stale PIDs + register_runtime_thumbnail_no_persist each",
+                    preview.len()
+                ),
+            );
+            let keep: Vec<u32> = preview.iter().map(|w| w.pid).collect();
+            state.dwm.prune_runtime_thumbnails_not_matching(&keep);
+            for w in &preview {
+                state
+                    .dwm
+                    .register_runtime_thumbnail_no_persist(w.pid, w.hwnd, &w.title);
+            }
+        } else {
+            diag::trace(
+                "settings_import",
+                "DWM reconcile skipped: try_list_preview_eve_windows returned None (no active profile or get_processes_to_preview error)",
+            );
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        diag::trace(
+            "settings_import",
+            "DWM reconcile skipped (non-Windows build)",
+        );
+    }
+
+    diag::trace(
+        "settings_import",
+        "sync_thumbnail_graph + request_thumbnail_layout_sync + refresh_global_hotkeys + widget_overlay::sync_widget_overlay_from_db",
+    );
     state.dwm.sync_thumbnail_graph();
+    state.dwm.request_thumbnail_layout_sync();
     refresh_global_hotkeys();
     widget_overlay::sync_widget_overlay_from_db(app_handle, state.db.as_ref());
     let _ = app_handle.emit("mumble-tree-changed", ());
     let _ = app_handle.emit("widget-overlay-settings-changed", ());
+    let _ = app_handle.emit("yaep-settings-imported", ());
+    diag::trace(
+        "settings_import",
+        "refresh_runtime_after_settings_import end: emitted mumble-tree-changed, widget-overlay-settings-changed, yaep-settings-imported",
+    );
 }
 
 #[tauri::command]
 fn yaep_export_settings(state: State<'_, AppState>) -> Result<String, String> {
+    diag::trace(
+        "settings_import",
+        &format!(
+            "yaep_export_settings (to string) db={}",
+            diag_settings_db_path(state.db.as_ref())
+        ),
+    );
     crate::settings_backup::export_bundle(state.db.as_ref())
 }
 
@@ -1271,14 +1355,44 @@ fn yaep_export_settings_to_path(state: State<'_, AppState>, path: String) -> Res
     if trimmed.is_empty() {
         return Err("No file path provided.".to_string());
     }
+    diag::trace(
+        "settings_import",
+        &format!(
+            "yaep_export_settings_to_path file={trimmed} db={}",
+            diag_settings_db_path(state.db.as_ref())
+        ),
+    );
     let json = crate::settings_backup::export_bundle(state.db.as_ref())?;
-    std::fs::write(trimmed, json).map_err(|e| e.to_string())
+    std::fs::write(trimmed, json).map_err(|e| {
+        diag::trace(
+            "settings_import",
+            &format!("yaep_export_settings_to_path write failed: {e}"),
+        );
+        e.to_string()
+    })?;
+    diag::trace("settings_import", "yaep_export_settings_to_path write ok");
+    Ok(())
 }
 
 #[tauri::command]
 fn yaep_import_settings(state: State<'_, AppState>, app_handle: AppHandle, json: String) -> Result<(), String> {
-    crate::settings_backup::import_bundle(state.db.as_ref(), &json)?;
+    diag::trace(
+        "settings_import",
+        &format!(
+            "yaep_import_settings (inline json) json_len={} db={}",
+            json.len(),
+            diag_settings_db_path(state.db.as_ref())
+        ),
+    );
+    crate::settings_backup::import_bundle(state.db.as_ref(), &json).map_err(|e| {
+        diag::trace(
+            "settings_import",
+            &format!("yaep_import_settings import_bundle failed: {e}"),
+        );
+        e
+    })?;
     refresh_runtime_after_settings_import(&state, &app_handle);
+    diag::trace("settings_import", "yaep_import_settings command ok");
     Ok(())
 }
 
@@ -1288,9 +1402,36 @@ fn yaep_import_settings_from_path(state: State<'_, AppState>, app_handle: AppHan
     if trimmed.is_empty() {
         return Err("No file path provided.".to_string());
     }
-    let json = std::fs::read_to_string(trimmed).map_err(|e| e.to_string())?;
-    crate::settings_backup::import_bundle(state.db.as_ref(), &json)?;
+    diag::trace(
+        "settings_import",
+        &format!(
+            "yaep_import_settings_from_path backup_file={trimmed} db={}",
+            diag_settings_db_path(state.db.as_ref())
+        ),
+    );
+    let json = std::fs::read_to_string(trimmed).map_err(|e| {
+        diag::trace(
+            "settings_import",
+            &format!("yaep_import_settings_from_path read_file failed: {e}"),
+        );
+        e.to_string()
+    })?;
+    diag::trace(
+        "settings_import",
+        &format!(
+            "yaep_import_settings_from_path read ok json_len={}",
+            json.len()
+        ),
+    );
+    crate::settings_backup::import_bundle(state.db.as_ref(), &json).map_err(|e| {
+        diag::trace(
+            "settings_import",
+            &format!("yaep_import_settings_from_path import_bundle failed: {e}"),
+        );
+        e
+    })?;
     refresh_runtime_after_settings_import(&state, &app_handle);
+    diag::trace("settings_import", "yaep_import_settings_from_path command ok");
     Ok(())
 }
 
@@ -1313,12 +1454,23 @@ pub fn run() {
         }
     };
     diag::trace("boot", "AppState initialized");
+    let boot_cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "(unknown)".to_string());
+    diag::trace(
+        "boot",
+        &format!(
+            "settings SQLite path (import/export use this file; DbService::new used cwd={boot_cwd}): {}",
+            diag_settings_db_path(state.db.as_ref())
+        ),
+    );
 
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .setup(|app| {
+            main_thread::register_gui_thread();
             diag::trace("boot", "tauri setup callback start");
             if let Err(error) = setup_tray(app) {
                 eprintln!("tray setup failed: {error}");

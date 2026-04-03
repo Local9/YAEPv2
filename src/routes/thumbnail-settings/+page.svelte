@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { backend } from "$services/backend";
   import type { Profile, ThumbnailConfig, ThumbnailSetting } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
@@ -173,7 +174,18 @@
     }
   }
 
-  onMount(refresh);
+  onMount(() => {
+    void refresh();
+    let unlistenImported: UnlistenFn | undefined;
+    void listen("yaep-settings-imported", () => {
+      void refresh();
+    }).then((u) => {
+      unlistenImported = u;
+    });
+    return () => {
+      unlistenImported?.();
+    };
+  });
 
   $effect(() => {
     if (saveMessage) toast.success(saveMessage);

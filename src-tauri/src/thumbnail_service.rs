@@ -5,12 +5,13 @@ use std::time::Duration;
 use std::thread;
 
 use serde::Serialize;
-use sysinfo::{Pid, ProcessesToUpdate, System};
+use sysinfo::{ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter};
 use tokio::time::sleep;
 
 use crate::db::DbService;
 use crate::diag;
+use crate::eve_preview_windows::try_list_preview_eve_windows;
 use crate::dwm::DwmService;
 use crate::windows::{WindowService, WindowSnapshot};
 
@@ -18,8 +19,6 @@ const MONITOR_INTERVAL_MS: u64 = 2000;
 const FOCUS_INTERVAL_MS: u64 = 100;
 const NEW_THUMBNAIL_REGISTRATION_BREATHING_MS: u64 = 140;
 const OVERLAY_CREATION_PER_CYCLE: usize = 1;
-const BASE_EVE_TITLE: &str = "EVE";
-const CHARACTER_TITLE_PREFIX: &str = "EVE - ";
 
 #[derive(Debug, Clone)]
 struct RuntimeThumbnail {
@@ -235,6 +234,20 @@ impl ThumbnailService {
     }
 }
 
+/// Runs [`DwmService::sync_thumbnail_graph`] when [`DwmService::request_thumbnail_layout_sync`] was
+/// set, even if this monitor cycle returns early (no active profile / no processes).
+struct DeferredThumbnailLayoutSync {
+    dwm: Arc<DwmService>,
+}
+
+impl Drop for DeferredThumbnailLayoutSync {
+    fn drop(&mut self) {
+        if self.dwm.take_pending_thumbnail_layout_sync() {
+            self.dwm.sync_thumbnail_graph();
+        }
+    }
+}
+
 fn refresh_runtime_thumbnails(
     runtime: &Arc<Mutex<RuntimeState>>,
     app_handle: &AppHandle,
@@ -243,21 +256,13 @@ fn refresh_runtime_thumbnails(
     dwm: &Arc<DwmService>,
     sys: &mut System,
 ) {
-    let Some(active_profile_id) = db.active_profile_id() else {
-        return;
+    let _deferred_layout_sync = DeferredThumbnailLayoutSync {
+        dwm: dwm.clone(),
     };
 
-    let Ok(process_names) = db.get_processes_to_preview(active_profile_id) else {
+    let Some(filtered) = try_list_preview_eve_windows(db, windows, sys) else {
         return;
     };
-    let target_processes: Vec<String> = process_names
-        .into_iter()
-        .map(|p| normalize_process_name(&p))
-        .collect();
-
-    sys.refresh_processes(ProcessesToUpdate::All, true);
-    let candidates = windows.enumerate_windows();
-    let filtered = filter_windows(candidates, sys, &target_processes);
 
     let new_by_pid: HashMap<u32, RuntimeThumbnail> = filtered
         .into_iter()
@@ -419,31 +424,3 @@ fn refresh_focus_state(
     );
 }
 
-fn filter_windows(
-    windows: Vec<WindowSnapshot>,
-    sys: &System,
-    target_processes: &[String],
-) -> Vec<WindowSnapshot> {
-    windows
-        .into_iter()
-        .filter(|window| {
-            let pid = Pid::from_u32(window.pid);
-            let Some(process) = sys.process(pid) else {
-                return false;
-            };
-            let process_name = normalize_process_name(process.name().to_string_lossy().as_ref());
-            if !target_processes.contains(&process_name) {
-                return false;
-            }
-
-            if window.title.trim() == BASE_EVE_TITLE {
-                return false;
-            }
-            window.title.starts_with(CHARACTER_TITLE_PREFIX)
-        })
-        .collect()
-}
-
-fn normalize_process_name(name: &str) -> String {
-    name.trim().trim_end_matches(".exe").to_lowercase()
-}

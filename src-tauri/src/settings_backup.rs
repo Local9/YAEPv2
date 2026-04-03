@@ -6,6 +6,15 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbService;
+use crate::diag;
+
+fn format_settings_db_path(db: &DbService) -> String {
+    db.settings_db_path()
+        .canonicalize()
+        .unwrap_or_else(|_| db.settings_db_path().to_path_buf())
+        .display()
+        .to_string()
+}
 
 const FORMAT_VERSION: u32 = 1;
 const MAX_IMPORT_BYTES: usize = 40 * 1024 * 1024;
@@ -185,6 +194,17 @@ pub struct MumbleOverlayRow {
 }
 
 pub fn export_bundle(db: &DbService) -> Result<String, String> {
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "(unknown)".to_string());
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "export_bundle begin cwd={} db={}",
+            cwd,
+            format_settings_db_path(db),
+        ),
+    );
     let conn = db.db_conn()?;
     let exported_at = format!(
         "{}",
@@ -280,7 +300,7 @@ pub fn export_bundle(db: &DbService) -> Result<String, String> {
         .query_map([], |row| {
             Ok(ThumbnailSettingsRow {
                 profile_id: row.get(0)?,
-                window_title: row.get(1)?,
+                window_title: row.get::<_, String>(1)?.trim().to_string(),
                 width: row.get(2)?,
                 height: row.get(3)?,
                 x: row.get(4)?,
@@ -363,7 +383,7 @@ pub fn export_bundle(db: &DbService) -> Result<String, String> {
         .query_map([], |row| {
             Ok(ClientGroupMemberRow {
                 group_id: row.get(0)?,
-                window_title: row.get(1)?,
+                window_title: row.get::<_, String>(1)?.trim().to_string(),
                 display_order: row.get(2)?,
             })
         })
@@ -479,28 +499,97 @@ pub fn export_bundle(db: &DbService) -> Result<String, String> {
         mumble_links_overlay_settings,
     };
 
-    serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())
+    let n_profiles = bundle.profiles.len();
+    let n_thumb = bundle.thumbnail_settings.len();
+    let n_app = bundle.app_settings.len();
+    let json = serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?;
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "export_bundle done json_len={} profiles={} thumbnail_settings={} app_settings={}",
+            json.len(),
+            n_profiles,
+            n_thumb,
+            n_app,
+        ),
+    );
+    Ok(json)
 }
 
 pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "(unknown)".to_string());
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle begin json_len={} cwd={} db={}",
+            json.len(),
+            cwd,
+            format_settings_db_path(db),
+        ),
+    );
     if json.len() > MAX_IMPORT_BYTES {
+        diag::trace("settings_backup", "import_bundle abort: backup larger than MAX_IMPORT_BYTES");
         return Err("Backup file is too large.".to_string());
     }
-    let mut bundle: YaepSettingsBundle =
-        serde_json::from_str(json).map_err(|e| format!("Invalid backup file: {e}"))?;
+    let mut bundle: YaepSettingsBundle = serde_json::from_str(json).map_err(|e| {
+        let msg = format!("Invalid backup file: {e}");
+        diag::trace("settings_backup", &format!("import_bundle parse json failed: {msg}"));
+        msg
+    })?;
     if bundle.format_version != FORMAT_VERSION {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle abort: format_version {} != expected {}",
+                bundle.format_version, FORMAT_VERSION
+            ),
+        );
         return Err(
             "This backup was created by a different YAEP version and cannot be imported here."
                 .to_string(),
         );
     }
-    validate_bundle(&bundle)?;
+    validate_bundle(&bundle).map_err(|e| {
+        diag::trace(
+            "settings_backup",
+            &format!("import_bundle validate_bundle failed: {e}"),
+        );
+        e
+    })?;
     normalize_active_profile(&mut bundle.profiles);
+
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle bundle rows: profiles={} processes_to_preview={} thumbnail_default={} thumbnail_settings={} eve_log={} eve_chat_channels={} client_groups={} client_group_members={} mumble_server_groups={} mumble_folders={} mumble_links={} mumble_link_groups={} mumble_overlay_rows={} app_settings={}",
+            bundle.profiles.len(),
+            bundle.processes_to_preview.len(),
+            bundle.thumbnail_default_config.len(),
+            bundle.thumbnail_settings.len(),
+            bundle.eve_log_settings.len(),
+            bundle.eve_chat_channels.len(),
+            bundle.client_groups.len(),
+            bundle.client_group_members.len(),
+            bundle.mumble_server_groups.len(),
+            bundle.mumble_folders.len(),
+            bundle.mumble_links.len(),
+            bundle.mumble_link_groups.len(),
+            bundle.mumble_links_overlay_settings.len(),
+            bundle.app_settings.len(),
+        ),
+    );
 
     let mut conn = db.db_conn()?;
     conn.execute("PRAGMA foreign_keys = OFF", [])
         .map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    diag::trace(
+        "settings_backup",
+        "import_bundle transaction: clearing user tables (DELETE ...) before insert",
+    );
 
     tx.execute("DELETE FROM ClientGroupMembers", [])
         .map_err(|e| e.to_string())?;
@@ -534,7 +623,26 @@ pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
     tx.execute("DELETE FROM AppSettings", [])
         .map_err(|e| e.to_string())?;
 
+    diag::trace(
+        "settings_backup",
+        "import_bundle DELETE phase finished; starting INSERTs",
+    );
+
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT Profile: {} row(s)",
+            bundle.profiles.len()
+        ),
+    );
     for p in &bundle.profiles {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO Profile id={} name={:?} is_active={}",
+                p.id, p.name, p.is_active
+            ),
+        );
         tx.execute(
             "INSERT INTO Profile (Id, Name, DeletedAt, IsActive, SwitchHotkey)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -546,18 +654,57 @@ pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
                 p.switch_hotkey
             ],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("INSERT Profile id={}: {e}", p.id);
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT ProcessesToPreview: {} row(s)",
+            bundle.processes_to_preview.len()
+        ),
+    );
     for row in &bundle.processes_to_preview {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO ProcessesToPreview profile_id={} process_name={:?}",
+                row.profile_id, row.process_name
+            ),
+        );
         tx.execute(
             "INSERT INTO ProcessesToPreview (ProfileId, ProcessName) VALUES (?1, ?2)",
             params![row.profile_id, row.process_name],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!(
+                "INSERT ProcessesToPreview profile_id={} process={:?}: {e}",
+                row.profile_id, row.process_name
+            );
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT ThumbnailDefaultConfig: {} row(s)",
+            bundle.thumbnail_default_config.len()
+        ),
+    );
     for row in &bundle.thumbnail_default_config {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO ThumbnailDefaultConfig profile_id={}",
+                row.profile_id
+            ),
+        );
         tx.execute(
             "INSERT INTO ThumbnailDefaultConfig
              (ProfileId, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness,
@@ -578,10 +725,36 @@ pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
                 if row.show_title_overlay { 1 } else { 0 }
             ],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("INSERT ThumbnailDefaultConfig profile_id={}: {e}", row.profile_id);
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT ThumbnailSettings: {} row(s) in bundle (empty titles skipped)",
+            bundle.thumbnail_settings.len()
+        ),
+    );
     for row in &bundle.thumbnail_settings {
+        let window_title = row.window_title.trim().to_string();
+        if window_title.is_empty() {
+            diag::trace(
+                "settings_backup",
+                "import_bundle SKIP ThumbnailSettings row (empty window_title after trim)",
+            );
+            continue;
+        }
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO ThumbnailSettings profile_id={} window_title={:?} x={} y={}",
+                row.profile_id, window_title, row.x, row.y
+            ),
+        );
         tx.execute(
             "INSERT INTO ThumbnailSettings
              (ProfileId, WindowTitle, Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness,
@@ -589,7 +762,7 @@ pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 row.profile_id,
-                row.window_title,
+                window_title,
                 row.width,
                 row.height,
                 row.x,
@@ -604,18 +777,57 @@ pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
                 row.character_id
             ],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!(
+                "INSERT ThumbnailSettings profile_id={} title={:?}: {e}",
+                row.profile_id, window_title
+            );
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT EveLogSettings: {} row(s)",
+            bundle.eve_log_settings.len()
+        ),
+    );
     for row in &bundle.eve_log_settings {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO EveLogSettings profile_id={}",
+                row.profile_id
+            ),
+        );
         tx.execute(
             "INSERT INTO EveLogSettings (ProfileId, ChatLogsPath, GameLogsPath) VALUES (?1, ?2, ?3)",
             params![row.profile_id, row.chat_logs_path, row.game_logs_path],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("INSERT EveLogSettings profile_id={}: {e}", row.profile_id);
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT EveChatChannels: {} row(s)",
+            bundle.eve_chat_channels.len()
+        ),
+    );
     for row in &bundle.eve_chat_channels {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO EveChatChannels id={} profile_id={} type={:?} name={:?}",
+                row.id, row.profile_id, row.channel_type, row.channel_name
+            ),
+        );
         tx.execute(
             "INSERT INTO EveChatChannels (Id, ProfileId, ChannelType, ChannelName, BackgroundColor)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -627,13 +839,31 @@ pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
                 row.background_color
             ],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("INSERT EveChatChannels id={}: {e}", row.id);
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT ClientGroups: {} row(s)",
+            bundle.client_groups.len()
+        ),
+    );
     for row in &bundle.client_groups {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO ClientGroups id={} profile_id={} name={:?}",
+                row.id, row.profile_id, row.name
+            ),
+        );
         tx.execute(
             "INSERT INTO ClientGroups (Id, ProfileId, Name, DisplayOrder, CycleForwardHotkey, CycleBackwardHotkey)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 row.id,
                 row.profile_id,
@@ -643,27 +873,92 @@ pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
                 row.cycle_backward_hotkey
             ],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("INSERT ClientGroups id={}: {e}", row.id);
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT ClientGroupMembers: {} row(s) in bundle (empty titles skipped)",
+            bundle.client_group_members.len()
+        ),
+    );
     for row in &bundle.client_group_members {
+        let window_title = row.window_title.trim().to_string();
+        if window_title.is_empty() {
+            diag::trace(
+                "settings_backup",
+                "import_bundle SKIP ClientGroupMembers row (empty window_title after trim)",
+            );
+            continue;
+        }
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO ClientGroupMembers group_id={} window_title={:?} display_order={}",
+                row.group_id, window_title, row.display_order
+            ),
+        );
         tx.execute(
             "INSERT INTO ClientGroupMembers (GroupId, WindowTitle, DisplayOrder) VALUES (?1, ?2, ?3)",
-            params![row.group_id, row.window_title, row.display_order],
+            params![row.group_id, window_title, row.display_order],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!(
+                "INSERT ClientGroupMembers group_id={} title={:?}: {e}",
+                row.group_id, window_title
+            );
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT MumbleServerGroups: {} row(s)",
+            bundle.mumble_server_groups.len()
+        ),
+    );
     for row in &bundle.mumble_server_groups {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO MumbleServerGroups id={} name={:?}",
+                row.id, row.name
+            ),
+        );
         tx.execute(
             "INSERT INTO MumbleServerGroups (Id, Name, DisplayOrder) VALUES (?1, ?2, ?3)",
             params![row.id, row.name, row.display_order],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("INSERT MumbleServerGroups id={}: {e}", row.id);
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
     let folder_order = ordered_mumble_folders(&bundle.mumble_folders)?;
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT MumbleFolders: {} row(s) (dependency-ordered)",
+            folder_order.len()
+        ),
+    );
     for row in folder_order {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO MumbleFolders id={} server_group_id={} parent_folder_id={:?} name={:?}",
+                row.id, row.server_group_id, row.parent_folder_id, row.name
+            ),
+        );
         tx.execute(
             "INSERT INTO MumbleFolders (Id, ServerGroupId, ParentFolderId, Name, DisplayOrder, IconKey)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -676,13 +971,31 @@ pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
                 row.icon_key
             ],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("INSERT MumbleFolders id={}: {e}", row.id);
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT MumbleLinks: {} row(s)",
+            bundle.mumble_links.len()
+        ),
+    );
     for row in &bundle.mumble_links {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO MumbleLinks id={} name={:?} server_group_id={} folder_id={:?}",
+                row.id, row.name, row.server_group_id, row.folder_id
+            ),
+        );
         tx.execute(
             "INSERT INTO MumbleLinks (Id, Name, Url, DisplayOrder, IsSelected, Hotkey, ServerGroupId, FolderId)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 row.id,
                 row.name,
@@ -694,25 +1007,72 @@ pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
                 row.folder_id
             ],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("INSERT MumbleLinks id={}: {e}", row.id);
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT MumbleLinkGroups: {} row(s)",
+            bundle.mumble_link_groups.len()
+        ),
+    );
     for row in &bundle.mumble_link_groups {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO MumbleLinkGroups link_id={} group_id={}",
+                row.link_id, row.group_id
+            ),
+        );
         tx.execute(
             "INSERT INTO MumbleLinkGroups (LinkId, GroupId) VALUES (?1, ?2)",
             params![row.link_id, row.group_id],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!(
+                "INSERT MumbleLinkGroups link_id={} group_id={}: {e}",
+                row.link_id, row.group_id
+            );
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
     if bundle.mumble_links_overlay_settings.is_empty() {
+        diag::trace(
+            "settings_backup",
+            "import_bundle INSERT INTO MumbleLinksOverlaySettings (default row: no overlay rows in bundle)",
+        );
         tx.execute(
             "INSERT INTO MumbleLinksOverlaySettings (AlwaysOnTop, X, Y, Width, Height) VALUES (1, 100, 100, 300, 400)",
             [],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("INSERT MumbleLinksOverlaySettings (default): {e}");
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     } else {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT MumbleLinksOverlaySettings: {} row(s)",
+                bundle.mumble_links_overlay_settings.len()
+            ),
+        );
         for row in &bundle.mumble_links_overlay_settings {
+            diag::trace(
+                "settings_backup",
+                &format!(
+                    "import_bundle INSERT INTO MumbleLinksOverlaySettings id={}",
+                    row.id
+                ),
+            );
             tx.execute(
                 "INSERT INTO MumbleLinksOverlaySettings (Id, AlwaysOnTop, X, Y, Width, Height)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -725,19 +1085,56 @@ pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
                     row.height
                 ],
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| {
+                let msg = format!("INSERT MumbleLinksOverlaySettings id={}: {e}", row.id);
+                diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+                msg
+            })?;
         }
     }
 
+    diag::trace(
+        "settings_backup",
+        &format!(
+            "import_bundle INSERT AppSettings: {} row(s)",
+            bundle.app_settings.len()
+        ),
+    );
     for kv in &bundle.app_settings {
+        diag::trace(
+            "settings_backup",
+            &format!(
+                "import_bundle INSERT INTO AppSettings key={:?} value_len={} (chars={})",
+                kv.key,
+                kv.value.len(),
+                kv.value.chars().count()
+            ),
+        );
         tx.execute(
             "INSERT INTO AppSettings (Key, Value) VALUES (?1, ?2)",
             params![kv.key, kv.value],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("INSERT AppSettings key={:?}: {e}", kv.key);
+            diag::trace("settings_backup", &format!("import_bundle FAILED {msg}"));
+            msg
+        })?;
     }
 
-    tx.commit().map_err(|e| e.to_string())?;
+    diag::trace(
+        "settings_backup",
+        "import_bundle all INSERTs done; committing transaction",
+    );
+
+    tx.commit().map_err(|e| {
+        diag::trace(
+            "settings_backup",
+            &format!("import_bundle transaction COMMIT failed: {e}"),
+        );
+        e.to_string()
+    })?;
+
+    diag::trace("settings_backup", "import_bundle transaction committed");
 
     sync_autoincrement_seq(&conn, "Profile", "Id")?;
     sync_autoincrement_seq(&conn, "MumbleServerGroups", "Id")?;
@@ -754,8 +1151,17 @@ pub fn import_bundle(db: &DbService, json: &str) -> Result<(), String> {
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .map_err(|e| e.to_string())?;
     if integrity.to_ascii_lowercase() != "ok" {
+        diag::trace(
+            "settings_backup",
+            &format!("import_bundle integrity_check FAILED: {integrity}"),
+        );
         return Err("Database integrity check failed after import.".to_string());
     }
+
+    diag::trace(
+        "settings_backup",
+        "import_bundle complete: PRAGMA integrity_check=ok; runtime refresh should follow",
+    );
 
     Ok(())
 }
@@ -858,6 +1264,9 @@ fn validate_bundle(bundle: &YaepSettingsBundle) -> Result<(), String> {
     for t in &bundle.thumbnail_settings {
         if !profile_ids.contains(&t.profile_id) {
             return Err("Backup references an unknown profile in thumbnail settings.".to_string());
+        }
+        if t.window_title.trim().is_empty() {
+            return Err("Backup has a thumbnail override with an empty window title.".to_string());
         }
     }
     check_pid!(&bundle.eve_log_settings, "EVE log settings");

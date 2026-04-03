@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { backend } from "$services/backend";
   import type {
     GridLayoutFormPrefs,
@@ -287,7 +288,18 @@
     }
   }
 
-  onMount(loadContext);
+  onMount(() => {
+    void loadContext();
+    let unlistenImported: UnlistenFn | undefined;
+    void listen("yaep-settings-imported", () => {
+      void loadContext();
+    }).then((u) => {
+      unlistenImported = u;
+    });
+    return () => {
+      unlistenImported?.();
+    };
+  });
 
   $effect(() => {
     if (status) toast.success(status);

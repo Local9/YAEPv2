@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use tauri::AppHandle;
@@ -28,6 +29,7 @@ use windows::core::PCWSTR;
 
 use crate::db::DbService;
 use crate::diag;
+use crate::main_thread;
 use crate::models::ThumbnailConfig;
 use crate::thumbnail_webview_overlay;
 
@@ -92,6 +94,9 @@ struct DwmInner {
     runtime: Mutex<HashMap<u32, RuntimeThumbnailWindow>>,
     app_handle: Mutex<Option<AppHandle>>,
     db: Mutex<Option<Arc<DbService>>>,
+    /// After settings import, run [`DwmService::sync_thumbnail_graph`] again once the monitor
+    /// loop has finished registering/updating hosts so geometry matches the new SQLite rows.
+    pending_layout_sync: AtomicBool,
 }
 
 /// DWM thumbnail hosts must be created and messaged on the thread that runs a Win32 message loop.
@@ -114,6 +119,7 @@ impl Default for DwmInner {
             runtime: Mutex::new(HashMap::new()),
             app_handle: Mutex::new(None),
             db: Mutex::new(None),
+            pending_layout_sync: AtomicBool::new(false),
         }
     }
 }
@@ -185,6 +191,21 @@ fn set_thumbnail_window_hovered(thumbnail_window_hwnd: isize, hovered: bool) {
 }
 
 impl DwmService {
+    /// Schedule an extra [`Self::sync_thumbnail_graph`] after the next thumbnail monitor cycle
+    /// (e.g. full settings import replaced DB while runtime hosts still exist).
+    pub fn request_thumbnail_layout_sync(&self) {
+        self
+            .inner
+            .pending_layout_sync
+            .store(true, Ordering::Release);
+    }
+
+    pub(crate) fn take_pending_thumbnail_layout_sync(&self) -> bool {
+        self.inner
+            .pending_layout_sync
+            .swap(false, Ordering::AcqRel)
+    }
+
     pub fn sync_thumbnail_graph(&self) {
         let inner = self.inner.clone();
         self.run_on_main(move || sync_thumbnail_graph_locked(&inner));
@@ -207,6 +228,10 @@ impl DwmService {
     }
 
     fn run_on_main(&self, f: impl FnOnce() + Send + 'static) {
+        if main_thread::is_gui_thread() {
+            f();
+            return;
+        }
         let app = self
             .inner
             .app_handle
@@ -229,6 +254,22 @@ impl DwmService {
     }
 
     pub fn register_runtime_thumbnail(&self, pid: u32, source_hwnd: isize, title: &str) {
+        self.register_runtime_thumbnail_inner(pid, source_hwnd, title, true);
+    }
+
+    /// Same as [`Self::register_runtime_thumbnail`], but does not write `ThumbnailSettings` after
+    /// resolving layout. Used after full settings import so the backup remains authoritative.
+    pub fn register_runtime_thumbnail_no_persist(&self, pid: u32, source_hwnd: isize, title: &str) {
+        self.register_runtime_thumbnail_inner(pid, source_hwnd, title, false);
+    }
+
+    fn register_runtime_thumbnail_inner(
+        &self,
+        pid: u32,
+        source_hwnd: isize,
+        title: &str,
+        persist_to_db: bool,
+    ) {
         if source_hwnd == 0 {
             diag::trace(
                 "dwm",
@@ -249,7 +290,7 @@ impl DwmService {
                 "dwm",
                 &format!("register_runtime_thumbnail pid={pid} on main thread"),
             );
-            register_runtime_thumbnail_locked(&inner, pid, source_hwnd, title);
+            register_runtime_thumbnail_locked(&inner, pid, source_hwnd, title, persist_to_db);
             diag::trace(
                 "dwm",
                 &format!("register_runtime_thumbnail pid={pid} main thread done"),
@@ -260,6 +301,26 @@ impl DwmService {
     pub fn unregister_runtime_thumbnail(&self, pid: u32) {
         let inner = self.inner.clone();
         self.run_on_main(move || unregister_runtime_thumbnail_locked(&inner, pid));
+    }
+
+    /// Remove DWM thumbnail hosts whose PIDs are not in `keep_pids` (e.g. after settings import or
+    /// when a client closed). Does nothing for PIDs that remain in the keep list.
+    pub fn prune_runtime_thumbnails_not_matching(&self, keep_pids: &[u32]) {
+        let keep: HashSet<u32> = keep_pids.iter().copied().collect();
+        let inner = self.inner.clone();
+        self.run_on_main(move || {
+            let stale: Vec<u32> = {
+                let state = inner.runtime.lock().expect("dwm runtime lock poisoned");
+                state
+                    .keys()
+                    .copied()
+                    .filter(|p| !keep.contains(p))
+                    .collect()
+            };
+            for pid in stale {
+                unregister_runtime_thumbnail_locked(&inner, pid);
+            }
+        });
     }
 
     pub fn set_focused_thumbnail(&self, focused_pid: Option<u32>) {
@@ -279,24 +340,29 @@ impl DwmService {
     ) -> Option<crate::thumbnail_webview_overlay::ThumbnailOverlayStatePayload> {
         let inner = self.inner.clone();
         let overlay_id = overlay_id.to_string();
+        let snapshot = move || {
+            inner.runtime.lock().ok().and_then(|s| {
+                s.iter()
+                    .find(|(_, e)| e.overlay_id == overlay_id)
+                    .map(|(pid, e)| {
+                        thumbnail_webview_overlay::overlay_state_payload(
+                            overlay_id.as_str(),
+                            *pid,
+                            e.is_focused,
+                            &e.config,
+                            &e.window_title,
+                        )
+                    })
+            })
+        };
+        if main_thread::is_gui_thread() {
+            return snapshot();
+        }
         let (tx, rx) = std::sync::mpsc::channel();
         let app = self.inner.app_handle.lock().ok().and_then(|g| g.clone())?;
         if app
             .run_on_main_thread(move || {
-                let out = inner.runtime.lock().ok().and_then(|s| {
-                    s.iter()
-                        .find(|(_, e)| e.overlay_id == overlay_id)
-                        .map(|(pid, e)| {
-                            thumbnail_webview_overlay::overlay_state_payload(
-                                overlay_id.as_str(),
-                                *pid,
-                                e.is_focused,
-                                &e.config,
-                                &e.window_title,
-                            )
-                        })
-                });
-                let _ = tx.send(out);
+                let _ = tx.send(snapshot());
             })
             .is_err()
         {
@@ -401,6 +467,7 @@ fn register_runtime_thumbnail_locked(
     pid: u32,
     source_hwnd: isize,
     title: String,
+    persist_to_db: bool,
 ) {
     let db_guard = inner.db.lock().expect("dwm db lock poisoned").clone();
     let Some(db) = db_guard else {
@@ -592,16 +659,18 @@ fn register_runtime_thumbnail_locked(
         config.height,
     );
 
-    // Persist immediately so ThumbnailSettings exists and new clients join the Default group
-    // (see DbService::save_thumbnail_setting). Without this, thumbnails appear before any drag/wheel
-    // save and never get ClientGroupMembers rows.
-    if let Err(e) = db.save_thumbnail_setting(
-        profile_id,
-        title.clone(),
-        entry.config.clone(),
-        None,
-    ) {
-        eprintln!("YAEP: persist thumbnail on register pid={pid}: {e}");
+    if persist_to_db {
+        // Persist immediately so ThumbnailSettings exists and new clients join the Default group
+        // (see DbService::save_thumbnail_setting). Without this, thumbnails appear before any drag/wheel
+        // save and never get ClientGroupMembers rows.
+        if let Err(e) = db.save_thumbnail_setting(
+            profile_id,
+            title.clone(),
+            entry.config.clone(),
+            None,
+        ) {
+            eprintln!("YAEP: persist thumbnail on register pid={pid}: {e}");
+        }
     }
 }
 

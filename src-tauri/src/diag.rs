@@ -1,7 +1,8 @@
 //! Diagnostics: panic labeling and optional stage tracing.
 //!
 //! Set environment variable `YAEP_DIAG` to any value other than `0`, `false`, or empty
-//! to print timestamped `YAEP_DIAG` lines to stderr (boot, thumbnail service, DWM).
+//! to print timestamped `YAEP_DIAG` lines to stderr (boot, thumbnail service, DWM, settings
+//! import/export in `settings_backup` / `settings_import`).
 //! Native crashes (e.g. access violation) do not run the panic hook; the last `YAEP_DIAG`
 //! line before exit indicates the last completed stage.
 

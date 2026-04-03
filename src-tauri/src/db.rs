@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -42,6 +42,11 @@ fn normalize_color_hex(input: Option<&str>) -> String {
 }
 
 impl DbService {
+    /// SQLite settings file used at runtime. Log with [`crate::diag::trace`] when debugging import/export (YAEP_DIAG).
+    pub fn settings_db_path(&self) -> &Path {
+        self.db_path.as_path()
+    }
+
     pub fn new() -> Result<Self, String> {
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
         let db_path = if cwd
@@ -837,7 +842,22 @@ impl DbService {
             )
             .optional()
             .map_err(|e| e.to_string())?;
-        Ok(row)
+        if row.is_some() {
+            return Ok(row);
+        }
+        let needle = t.to_lowercase();
+        let row_ci = conn
+            .query_row(
+                "SELECT Width, Height, X, Y, Opacity, FocusBorderColor, FocusBorderThickness, ShowTitleOverlay
+                 , DecloakFlashColor, DecloakFlashThickness, DecloakFlashDurationMs
+                 FROM ThumbnailSettings WHERE ProfileId = ?1 AND LOWER(TRIM(WindowTitle)) = ?2
+                 LIMIT 1",
+                params![profile_id, needle],
+                Self::thumbnail_config_from_row,
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        Ok(row_ci)
     }
 
     /// Renames persisted thumbnail + client-group rows when the same process gets a new window title
