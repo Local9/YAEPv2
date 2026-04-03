@@ -5,7 +5,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { backend } from "$services/backend";
   import BrowserWidget from "$lib/components/widget-overlay/browser-widget.svelte";
-  import MumbleLinksWidget from "$lib/components/widget-overlay/mumble-links-widget.svelte";
+  import MumbleLinksWidget from "$lib/components/widget-overlay/mumble-links-widget/mumble-links-widget.svelte";
   import WidgetWrapper from "$lib/components/widget-overlay/widget-wrapper.svelte";
   import { type WidgetSnapshot, type WidgetOverlaySettings } from "$models/domain";
   import {

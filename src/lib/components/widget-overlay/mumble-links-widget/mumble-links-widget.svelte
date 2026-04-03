@@ -3,15 +3,18 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { backend } from "$services/backend";
-  import type { MumbleFolder, MumbleLink, MumbleTreeSnapshot } from "$models/domain";
-  import { formatMumbleServerGroupDisplayName } from "$lib/utils/mumble-display";
-  import MumbleFolderIcon from "$lib/mumble/mumble-folder-icon.svelte";
-  import * as Menubar from "$lib/components/ui/menubar";
+  import type {
+    MumbleFolder,
+    MumbleLink,
+    MumbleServerGroup,
+    MumbleTreeSnapshot,
+    WidgetLayoutRect
+  } from "$models/domain";
   import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
-  import HeadphonesIcon from "@lucide/svelte/icons/headphones";
   import PinIcon from "@lucide/svelte/icons/pin";
+  import MumbleLinksMenu from "./mumble-links-menu.svelte";
 
-  type WidgetFrameModel = { x: number; y: number; width: number; height: number } & Record<string, unknown>;
+  type WidgetFrameModel = WidgetLayoutRect & Record<string, unknown>;
 
   let {
     frame = $bindable<WidgetFrameModel>(),
@@ -36,12 +39,16 @@
   let drag = $state<{ dx: number; dy: number } | null>(null);
   let resizeWidth = $state<{ startX: number; startW: number } | null>(null);
 
-  async function loadTree() {
+  async function fetchTree(): Promise<MumbleTreeSnapshot | null> {
     try {
-      tree = await backend.getMumbleTree();
+      return await backend.getMumbleTree();
     } catch {
-      tree = null;
+      return null;
     }
+  }
+
+  async function loadTree() {
+    tree = await fetchTree();
   }
 
   $effect(() => {
@@ -68,7 +75,7 @@
     };
   });
 
-  const sortedGroups = $derived(
+  const sortedGroups = $derived<MumbleServerGroup[]>(
     tree
       ? [...tree.groups].sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name))
       : []
@@ -181,91 +188,6 @@
   }
 </script>
 
-{#snippet subfolderLinksOnly(gid: number, subfolder: MumbleFolder)}
-  <Menubar.Sub>
-    <Menubar.SubTrigger class="w-full max-w-full min-w-0 cursor-default">
-      <MumbleFolderIcon iconKey={subfolder.iconKey ?? null} class="size-3.5 shrink-0" />
-      <span class="truncate">{subfolder.name}</span>
-    </Menubar.SubTrigger>
-    <Menubar.SubContent class="max-h-[min(18rem,85dvh)] overflow-y-auto overflow-x-hidden p-1" interactOutsideBehavior="ignore">
-      {#each linksForFolder(gid, subfolder.id) as link (link.id)}
-        <Menubar.Item onclick={() => openLink(link.id)}>{link.name}</Menubar.Item>
-      {/each}
-      {#if linksForFolder(gid, subfolder.id).length === 0}
-        <Menubar.Item disabled>Empty folder</Menubar.Item>
-      {/if}
-      {#if nestedSubfoldersIgnored(gid, subfolder.id)}
-        <Menubar.Item disabled>Nested folders: edit on Mumble Links page</Menubar.Item>
-      {/if}
-    </Menubar.SubContent>
-  </Menubar.Sub>
-{/snippet}
-
-{#snippet rootFolderMenu(group: { id: number; name: string }, folder: MumbleFolder)}
-  {@const rootLinks = linksForFolder(group.id, folder.id)}
-  {@const childFolders = foldersForParent(group.id, folder.id)}
-  <Menubar.Menu value="mumble-g{group.id}-f{folder.id}">
-    <Menubar.Trigger
-      class="border-input bg-secondary text-secondary-foreground hover:bg-muted aria-expanded:bg-muted mumble-folder-trigger min-h-6 leading-[1.2] max-w-full min-w-0 gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-xs"
-      aria-label="Mumble folder {folder.name}"
-    >
-      <MumbleFolderIcon iconKey={folder.iconKey ?? null} class="size-3.5 shrink-0" />
-      <span class="truncate">
-        {#if multipleServerGroups}
-          {formatMumbleServerGroupDisplayName(group.name)} / {folder.name}
-        {:else}
-          {folder.name}
-        {/if}
-      </span>
-    </Menubar.Trigger>
-    <Menubar.Content
-      class="flex max-h-96 w-56 min-w-0 flex-col overflow-visible p-0"
-      align="start"
-      side="bottom"
-      interactOutsideBehavior="ignore"
-    >
-      <div class="flex w-full min-w-0 flex-col">
-        <div class="max-h-96 overflow-y-auto overflow-x-hidden px-1 py-1">
-          {#each rootLinks as link (link.id)}
-            <Menubar.Item onclick={() => openLink(link.id)}>{link.name}</Menubar.Item>
-          {/each}
-          {#if rootLinks.length === 0 && childFolders.length === 0}
-            <Menubar.Item disabled>Empty folder</Menubar.Item>
-          {/if}
-        </div>
-        {#each childFolders as sub (sub.id)}
-          {@render subfolderLinksOnly(group.id, sub)}
-        {/each}
-      </div>
-    </Menubar.Content>
-  </Menubar.Menu>
-{/snippet}
-
-{#snippet rootLinksOnlyMenu(group: { id: number; name: string })}
-  {@const rootLinks = linksForFolder(group.id, null)}
-  <Menubar.Menu value="mumble-g{group.id}-root">
-    <Menubar.Trigger
-      class="border-input bg-secondary text-secondary-foreground hover:bg-muted aria-expanded:bg-muted mumble-folder-trigger min-h-6 leading-[1.2] max-w-full min-w-0 gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-xs"
-      aria-label="Mumble links for {formatMumbleServerGroupDisplayName(group.name)}"
-    >
-      <HeadphonesIcon class="size-3.5 shrink-0" aria-hidden="true" />
-      <span class="truncate">{formatMumbleServerGroupDisplayName(group.name)}</span>
-    </Menubar.Trigger>
-    <Menubar.Content
-      class="max-h-96 w-56 overflow-visible p-0"
-      align="start"
-      side="bottom"
-      interactOutsideBehavior="ignore"
-    >
-      <div class="max-h-96 overflow-y-auto overflow-x-hidden px-1 py-1">
-        {#each rootLinks as link (link.id)}
-          <Menubar.Item onclick={() => openLink(link.id)}>{link.name}</Menubar.Item>
-        {/each}
-      </div>
-    </Menubar.Content>
-  </Menubar.Menu>
-{/snippet}
-
 <div
   bind:this={rootEl}
   class="mumble-chip-shell absolute z-0 box-border touch-none select-none pointer-events-auto rounded-md border border-border bg-card text-card-foreground flex flex-col justify-center shadow-[0_1px_2px_oklch(0_0_0/0.12),0_6px_18px_oklch(0_0_0/0.18)]"
@@ -287,41 +209,15 @@
     </div>
 
     <div class="mumble-chip-menu flex min-w-0 flex-1">
-      <Menubar.Root bind:value={menubarValue} loop>
-        {#if sortedGroups.length === 0}
-          <Menubar.Menu value="mumble-empty">
-            <Menubar.Trigger
-              class="text-muted-foreground mumble-folder-trigger min-h-6 leading-[1.2] max-w-full min-w-0 gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium"
-              disabled
-            >
-              <HeadphonesIcon class="size-3.5 shrink-0" aria-hidden="true" />
-              <span class="truncate">Mumble</span>
-            </Menubar.Trigger>
-          </Menubar.Menu>
-        {:else}
-          {#each sortedGroups as group (group.id)}
-            {@const rootFolders = foldersForParent(group.id, null)}
-            {@const rootLinks = linksForFolder(group.id, null)}
-            {#if rootFolders.length > 0}
-              {#each rootFolders as folder (folder.id)}
-                {@render rootFolderMenu(group, folder)}
-              {/each}
-            {:else if rootLinks.length > 0}
-              {@render rootLinksOnlyMenu(group)}
-            {:else}
-              <Menubar.Menu value="mumble-g{group.id}-empty">
-                <Menubar.Trigger
-                  class="text-muted-foreground mumble-folder-trigger min-h-6 leading-[1.2] max-w-full min-w-0 gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium"
-                  disabled
-                >
-                  <HeadphonesIcon class="size-3.5 shrink-0" aria-hidden="true" />
-                  <span class="truncate">{formatMumbleServerGroupDisplayName(group.name)}</span>
-                </Menubar.Trigger>
-              </Menubar.Menu>
-            {/if}
-          {/each}
-        {/if}
-      </Menubar.Root>
+      <MumbleLinksMenu
+        bind:menubarValue={menubarValue}
+        {sortedGroups}
+        {multipleServerGroups}
+        foldersForParent={foldersForParent}
+        linksForFolder={linksForFolder}
+        nestedSubfoldersIgnored={nestedSubfoldersIgnored}
+        openLink={openLink}
+      />
     </div>
 
     <button
@@ -398,3 +294,4 @@
     outline: none;
   }
 </style>
+
