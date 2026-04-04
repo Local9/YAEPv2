@@ -109,20 +109,7 @@ impl EveProfileToolsService {
         self.ensure_eve_not_running()?;
         let source = self.find_profile_dir(&source_profile)?;
         let target = self.find_profile_dir(&target_profile)?;
-
-        for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let file_name = entry.file_name().to_string_lossy().to_string();
-            let is_copy_file =
-                file_name.starts_with("core_char_") || file_name.starts_with("core_user_");
-            if !is_copy_file || !entry.path().is_file() {
-                continue;
-            }
-            let destination = target.join(file_name);
-            fs::copy(entry.path(), destination).map_err(|e| e.to_string())?;
-        }
-
-        Ok(())
+        copy_core_char_user_files(&source, &target)
     }
 
     pub fn copy_character_files_on_server(
@@ -134,19 +121,7 @@ impl EveProfileToolsService {
         self.ensure_eve_not_running()?;
         let source = self.resolve_profile_dir(&server_name, &source_profile_name)?;
         let target = self.resolve_profile_dir(&server_name, &target_profile_name)?;
-
-        for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let file_name = entry.file_name().to_string_lossy().to_string();
-            let is_copy_file = file_name.starts_with("core_char_") || file_name.starts_with("core_user_");
-            if !is_copy_file || !entry.path().is_file() {
-                continue;
-            }
-            let destination = target.join(file_name);
-            fs::copy(entry.path(), destination).map_err(|e| e.to_string())?;
-        }
-
-        Ok(())
+        copy_core_char_user_files(&source, &target)
     }
 
     pub fn copy_profile_on_server(
@@ -465,6 +440,20 @@ fn extract_numeric_id(file_name: &str, prefix: &str) -> Option<String> {
         return None;
     }
     Some(id.to_string())
+}
+
+fn copy_core_char_user_files(source: &Path, target: &Path) -> Result<(), String> {
+    for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        let is_copy_file = file_name.starts_with("core_char_") || file_name.starts_with("core_user_");
+        if !is_copy_file || !entry.path().is_file() {
+            continue;
+        }
+        let destination = target.join(file_name);
+        fs::copy(entry.path(), destination).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), String> {

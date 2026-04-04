@@ -3,6 +3,11 @@
   import type { MumbleFolder, MumbleLink, MumbleServerGroup } from "$models/domain";
   import MumbleFolderIcon from "$lib/mumble/mumble-folder-icon.svelte";
   import { formatMumbleServerGroupDisplayName } from "$lib/utils/mumble-display";
+  import MumbleLinksItems from "./mumble-links-items.svelte";
+  import {
+    MUMBLE_MENU_FILLED_TRIGGER_CLASS,
+    MUMBLE_MENU_SCROLL_LIST_CLASS
+  } from "./mumble-links-menu-classes";
   import MumbleLinksSubfolderLinksOnlyMenu from "./mumble-links-subfolder-links-only-menu.svelte";
 
   let {
@@ -25,11 +30,12 @@
 
   let rootLinks = $derived(linksForFolder(group.id, folder.id));
   let childFolders = $derived(foldersForParent(group.id, folder.id));
+
 </script>
 
 <Menubar.Menu value="mumble-g{group.id}-f{folder.id}">
   <Menubar.Trigger
-    class="border-input bg-secondary text-secondary-foreground hover:bg-muted aria-expanded:bg-muted mumble-folder-trigger min-h-6 leading-[1.2] max-w-full min-w-0 gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium shadow-xs"
+    class={MUMBLE_MENU_FILLED_TRIGGER_CLASS}
     aria-label="Mumble folder {folder.name}"
   >
     <MumbleFolderIcon iconKey={folder.iconKey ?? null} class="size-3.5 shrink-0" />
@@ -48,10 +54,8 @@
     interactOutsideBehavior="ignore"
   >
     <div class="flex w-full min-w-0 flex-col">
-      <div class="max-h-96 overflow-y-auto overflow-x-hidden px-1 py-1">
-        {#each rootLinks as link (link.id)}
-          <Menubar.Item onclick={() => openLink(link.id)}>{link.name}</Menubar.Item>
-        {/each}
+      <div class={MUMBLE_MENU_SCROLL_LIST_CLASS}>
+        <MumbleLinksItems links={rootLinks} openLink={openLink} />
 
         {#if rootLinks.length === 0 && childFolders.length === 0}
           <Menubar.Item disabled>Empty folder</Menubar.Item>

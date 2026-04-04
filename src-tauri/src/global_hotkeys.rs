@@ -168,6 +168,16 @@ struct HotkeyCapturedPayload {
     target_id: Option<i64>,
 }
 
+fn emit_hotkey_captured(payload: HotkeyCapturedPayload) {
+    let app_for_emit = HOTKEY_APP_HANDLE.get().cloned();
+    if let Some(app_ref) = app_for_emit {
+        let app_emit = app_ref.clone();
+        let _ = app_ref.run_on_main_thread(move || {
+            let _ = app_emit.emit("hotkeyCaptured", payload);
+        });
+    }
+}
+
 #[derive(Clone)]
 enum HotkeyAction {
     ActivateProfile(i64),
@@ -464,7 +474,7 @@ fn try_dispatch_hotkey_capture(
                 if app_for_emit.is_none() {
                     diag::trace("hotkeys", "capture_emit skipped: HOTKEY_APP_HANDLE unset");
                 }
-                if let Some(app_ref) = app_for_emit {
+                if app_for_emit.is_some() {
                     diag::trace(
                         "hotkeys",
                         &format!(
@@ -472,10 +482,7 @@ fn try_dispatch_hotkey_capture(
                             payload.capture_type, payload.target_id, payload.value
                         ),
                     );
-                    let app_emit = app_ref.clone();
-                    let _ = app_ref.run_on_main_thread(move || {
-                        let _ = app_emit.emit("hotkeyCaptured", payload);
-                    });
+                    emit_hotkey_captured(payload);
                 }
                 return Some(HotkeyCaptureDisposition::Swallow);
             }
@@ -503,7 +510,7 @@ fn try_dispatch_hotkey_capture(
                 g.suppress_next_hotkey_dispatch = true;
                 let app_for_emit = HOTKEY_APP_HANDLE.get().cloned();
                 drop(g);
-                if let Some(app_ref) = app_for_emit {
+                if app_for_emit.is_some() {
                     diag::trace(
                         "hotkeys",
                         &format!(
@@ -511,10 +518,7 @@ fn try_dispatch_hotkey_capture(
                             payload.capture_type, payload.target_id
                         ),
                     );
-                    let app_emit = app_ref.clone();
-                    let _ = app_ref.run_on_main_thread(move || {
-                        let _ = app_emit.emit("hotkeyCaptured", payload);
-                    });
+                    emit_hotkey_captured(payload);
                 } else {
                     diag::trace(
                         "hotkeys",

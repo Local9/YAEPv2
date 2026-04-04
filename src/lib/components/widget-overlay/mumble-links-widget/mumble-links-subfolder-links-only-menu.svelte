@@ -2,6 +2,7 @@
   import * as Menubar from "$lib/components/ui/menubar";
   import MumbleFolderIcon from "$lib/mumble/mumble-folder-icon.svelte";
   import type { MumbleFolder, MumbleLink } from "$models/domain";
+  import MumbleLinksItems from "./mumble-links-items.svelte";
 
   let {
     gid,
@@ -29,9 +30,7 @@
     class="max-h-[min(18rem,85dvh)] overflow-y-auto overflow-x-hidden p-1"
     interactOutsideBehavior="ignore"
   >
-    {#each folderLinks as link (link.id)}
-      <Menubar.Item onclick={() => openLink(link.id)}>{link.name}</Menubar.Item>
-    {/each}
+    <MumbleLinksItems links={folderLinks} openLink={openLink} />
     {#if folderLinks.length === 0}
       <Menubar.Item disabled>Empty folder</Menubar.Item>
     {/if}
