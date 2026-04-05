@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { getMumbleLinksPageContext } from "./mumble-links-context";
@@ -11,6 +12,19 @@
   }
 
   let { gid, fid }: Props = $props();
+
+  let urlInputRef = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    const d = ctl.linkDraft;
+    const visible = d !== null && d.serverGroupId === gid && d.folderId === fid;
+    if (!visible) return;
+    void tick().then(() => {
+      requestAnimationFrame(() => {
+        urlInputRef?.focus();
+      });
+    });
+  });
 </script>
 
 {#if ctl.linkDraft && ctl.linkDraft.serverGroupId === gid && ctl.linkDraft.folderId === fid}
@@ -20,6 +34,7 @@
   >
     <p class="text-muted-foreground text-xs font-medium">New link</p>
     <Input
+      bind:ref={urlInputRef}
       class="font-mono text-sm"
       placeholder="mumble://..."
       value={ctl.linkDraftUrl}

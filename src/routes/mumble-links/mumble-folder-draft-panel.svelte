@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Select from "$lib/components/ui/select";
   import { Input } from "$lib/components/ui/input";
@@ -15,6 +16,19 @@
   }
 
   let { gid, parentId, depth }: Props = $props();
+
+  let nameInputRef = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    const d = ctl.folderDraft;
+    const visible = d !== null && d.serverGroupId === gid && d.parentFolderId === parentId;
+    if (!visible) return;
+    void tick().then(() => {
+      requestAnimationFrame(() => {
+        nameInputRef?.focus();
+      });
+    });
+  });
 </script>
 
 {#if ctl.folderDraft && ctl.folderDraft.serverGroupId === gid && ctl.folderDraft.parentFolderId === parentId}
@@ -24,6 +38,7 @@
   >
     <p class="text-muted-foreground text-xs font-medium">New folder</p>
     <Input
+      bind:ref={nameInputRef}
       bind:value={ctl.folderDraftName}
       placeholder="Folder name"
       onkeydown={(e) => ctl.onEnterSubmit(e, () => void ctl.submitFolderDraft())}
