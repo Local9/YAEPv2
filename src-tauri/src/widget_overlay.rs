@@ -21,6 +21,12 @@ static HIT_REGIONS: Mutex<Vec<(i32, i32, i32, i32)>> = Mutex::new(Vec::new());
 static DRAGGING: AtomicBool = AtomicBool::new(false);
 static CURSOR_POLL_STARTED: Once = Once::new();
 
+/// Last value passed to `set_ignore_cursor_events` on the widget overlay window. Updated only when
+/// it changes so we do not hammer WebView2 / the windowing stack at ~60Hz (can freeze the webview
+/// after long sessions in release builds).
+#[cfg(target_os = "windows")]
+static LAST_WIDGET_CURSOR_IGNORE: Mutex<Option<bool>> = Mutex::new(None);
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WidgetOverlayHitRect {
@@ -421,15 +427,36 @@ fn point_in_regions(px: i32, py: i32, regions: &[(i32, i32, i32, i32)]) -> bool 
 }
 
 #[cfg(target_os = "windows")]
+fn clear_last_widget_cursor_ignore() {
+    if let Ok(mut g) = LAST_WIDGET_CURSOR_IGNORE.lock() {
+        *g = None;
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn set_widget_ignore_cursor_events_if_changed(win: &tauri::WebviewWindow, ignore: bool) {
+    let Ok(mut last) = LAST_WIDGET_CURSOR_IGNORE.lock() else {
+        return;
+    };
+    if *last == Some(ignore) {
+        return;
+    }
+    let _ = win.set_ignore_cursor_events(ignore);
+    *last = Some(ignore);
+}
+
+#[cfg(target_os = "windows")]
 fn poll_cursor_ignore(app: &AppHandle) {
     let Some(win) = app.get_webview_window(WIDGET_OVERLAY_LABEL) else {
+        clear_last_widget_cursor_ignore();
         return;
     };
     if !win.is_visible().unwrap_or(false) {
+        clear_last_widget_cursor_ignore();
         return;
     }
     if DRAGGING.load(Ordering::Relaxed) {
-        let _ = win.set_ignore_cursor_events(false);
+        set_widget_ignore_cursor_events_if_changed(&win, false);
         return;
     }
     let Ok(hwnd) = win.hwnd() else {
@@ -447,9 +474,12 @@ fn poll_cursor_ignore(app: &AppHandle) {
             return;
         }
     }
-    let regions = HIT_REGIONS.lock().unwrap();
+    let regions = match HIT_REGIONS.lock() {
+        Ok(g) => g,
+        Err(_) => return,
+    };
     let hit = point_in_regions(pt.x, pt.y, &regions);
-    let _ = win.set_ignore_cursor_events(!hit);
+    set_widget_ignore_cursor_events_if_changed(&win, !hit);
 }
 
 #[cfg(target_os = "windows")]
@@ -482,10 +512,14 @@ pub fn update_hit_regions(rects: Vec<WidgetOverlayHitRect>) {
     if let Ok(mut g) = HIT_REGIONS.lock() {
         *g = mapped;
     }
+    #[cfg(target_os = "windows")]
+    clear_last_widget_cursor_ignore();
 }
 
 pub fn set_dragging(dragging: bool) {
     DRAGGING.store(dragging, Ordering::Relaxed);
+    #[cfg(target_os = "windows")]
+    clear_last_widget_cursor_ignore();
 }
 
 /// Toggles whether non-pinned widgets are hidden (`widgets_suppressed`). The overlay window stays visible.
