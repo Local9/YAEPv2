@@ -16,6 +16,8 @@
         color: var(--foreground);
         z-index: 9999;
         font-family: Inter, Segoe UI, system-ui, sans-serif;
+        /* Clicks must reach the app if removal races hydration or IPC is slow (Tauri WebView). */
+        pointer-events: none;
       }
 
       #boot-splash .spinner {

@@ -62,19 +62,28 @@
       return;
     }
 
+    const failsafeMs = 15_000;
+    const failsafeId = window.setTimeout(() => {
+      appLoading = false;
+      document.getElementById("boot-splash")?.remove();
+    }, failsafeMs);
+
     void (async () => {
       try {
-        const t = await backend.getAppSetting("Theme");
-        if (t === "Light") setMode("light");
-        else if (t === "Dark") setMode("dark");
-      } catch {
-        /* ignore */
-      }
-      try {
-        await backend.appReady();
-      } catch {
-        appLoadError = "Unable to start runtime thumbnails.";
+        try {
+          const t = await backend.getAppSetting("Theme");
+          if (t === "Light") setMode("light");
+          else if (t === "Dark") setMode("dark");
+        } catch {
+          /* ignore */
+        }
+        try {
+          await backend.appReady();
+        } catch {
+          appLoadError = "Unable to start runtime thumbnails.";
+        }
       } finally {
+        window.clearTimeout(failsafeId);
         appLoading = false;
         document.getElementById("boot-splash")?.remove();
       }

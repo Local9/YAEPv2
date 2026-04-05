@@ -157,3 +157,14 @@ body {
   --error-border: color-mix(in oklch, var(--destructive) 42%, var(--border));
   --error-text: var(--destructive);
 }
+
+/*
+ * bits-ui keeps sheet/dialog overlays mounted while exit animations finish. Some WebView2
+ * builds never resolve animation.finished, leaving an invisible full-screen layer that blocks
+ * clicks. Closed overlays do not need hit testing; open overlays keep data-state="open".
+ */
+[data-slot="sheet-overlay"][data-state="closed"],
+[data-slot="dialog-overlay"][data-state="closed"],
+[data-slot="alert-dialog-overlay"][data-state="closed"] {
+  pointer-events: none;
+}
