@@ -10,10 +10,6 @@
     Profile,
     ThumbnailSetting,
   } from "$models/domain";
-  import { Button } from "$lib/components/ui/button";
-  import { Checkbox } from "$lib/components/ui/checkbox";
-  import * as Select from "$lib/components/ui/select";
-  import { Slider } from "$lib/components/ui/slider";
   import { toast } from "svelte-sonner";
   import {
     Card,
@@ -22,21 +18,11 @@
     CardHeader,
     CardTitle,
   } from "$lib/components/ui/card";
-  import { Field, FieldContent, FieldLabel } from "$lib/components/ui/field";
-  import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-  } from "$lib/components/ui/table";
   import Grid3x3Icon from "@lucide/svelte/icons/grid-3x3";
-  import LayoutGridIcon from "@lucide/svelte/icons/layout-grid";
-  import CrosshairIcon from "@lucide/svelte/icons/crosshair";
-  import MonitorIcon from "@lucide/svelte/icons/monitor";
-  import PlayIcon from "@lucide/svelte/icons/play";
-  import DownloadIcon from "@lucide/svelte/icons/download";
+  import GridLayoutControls from "$lib/components/grid-layout/grid-layout-controls.svelte";
+  import GridLayoutActionBar from "$lib/components/grid-layout/grid-layout-action-bar.svelte";
+  import GridLayoutPreviewTable from "$lib/components/grid-layout/grid-layout-preview-table.svelte";
+  import { formatYyyyMmDdDash } from "$lib/datetime/format-yyyy-mm-dd";
   import {
     buildGridLayoutFormPrefs,
     buildGridLayoutPayload,
@@ -44,9 +30,14 @@
     monitorWorkOffset as computeMonitorWorkOffset,
     syncHeightFromWidth as computeHeightFromWidth,
     syncWidthFromHeight as computeWidthFromHeight,
-  } from "./grid-layout-helpers";
-
-  const ASPECT_RATIO_OPTIONS = ["21:9", "21:4", "16:9", "4:3", "1:1"] as const;
+  } from "$lib/grid-layout/grid-layout-helpers";
+  import {
+    ASPECT_RATIO_OPTIONS,
+    THUMBNAIL_LAYOUT_HEIGHT_MAX as CELL_H_MAX,
+    THUMBNAIL_LAYOUT_HEIGHT_MIN as CELL_H_MIN,
+    THUMBNAIL_LAYOUT_WIDTH_MAX as CELL_W_MAX,
+    THUMBNAIL_LAYOUT_WIDTH_MIN as CELL_W_MIN,
+  } from "$lib/grid-layout/thumbnail-layout-bounds";
 
   let profiles = $state<Profile[]>([]);
   let activeProfileId = $state<number | null>(null);
@@ -71,11 +62,6 @@
   let aspectRatioItems = $derived<{ value: string; label: string }[]>(
     ASPECT_RATIO_OPTIONS.map((r) => ({ value: r, label: r })),
   );
-
-  const CELL_W_MIN = 192;
-  const CELL_W_MAX = 960;
-  const CELL_H_MIN = 108;
-  const CELL_H_MAX = 540;
 
   /** Keep current width; set height from ratio, then clamp both to slider bounds. */
   function syncHeightFromWidth(width = gridCellWidth) {
@@ -188,13 +174,6 @@
         : "";
   }
 
-  function formatYyyyMmDd(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-
   function buildPayload(): GridLayoutPayload | null {
     const { payload, error: payloadError } = buildGridLayoutPayload({
       activeProfileId,
@@ -272,7 +251,7 @@
     error = "";
     try {
       const { save } = await import("@tauri-apps/plugin-dialog");
-      const defaultPath = `yaep-grid-layout-${formatYyyyMmDd(new Date())}.json`;
+      const defaultPath = `yaep-grid-layout-${formatYyyyMmDdDash(new Date())}.json`;
       const filePath = await save({
         title: "Export grid layout settings",
         defaultPath,
@@ -321,214 +300,37 @@
     </div>
   </CardHeader>
   <CardContent>
-  <div class="grid max-w-4xl grid-cols-1 gap-4 sm:grid-cols-3">
-    <Field class="sm:col-span-3">
-      <FieldLabel class="text-muted-foreground">Aspect ratio</FieldLabel>
-      <FieldContent>
-        <Select.Root
-          type="single"
-          bind:value={selectedAspectRatio}
-          items={aspectRatioItems}
-          onValueChange={() => syncHeightFromWidth()}
-        >
-          <Select.Trigger class="w-full">
-            <span data-slot="select-value">{selectedAspectRatio}</span>
-          </Select.Trigger>
-          <Select.Content>
-            {#each ASPECT_RATIO_OPTIONS as r (r)}
-              <Select.Item value={r} label={r}>{r}</Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
-      </FieldContent>
-    </Field>
-
-    <Field class="sm:col-span-3">
-      <div class="flex items-baseline justify-between gap-2">
-        <FieldLabel class="text-muted-foreground">Cell width</FieldLabel>
-        <span class="text-muted-foreground text-sm tabular-nums">{gridCellWidth}px</span>
-      </div>
-      <FieldContent class="pt-1">
-        <Slider
-          type="single"
-          bind:value={gridCellWidth}
-          min={CELL_W_MIN}
-          max={CELL_W_MAX}
-          step={1}
-          onValueChange={(w) => syncHeightFromWidth(w)}
-        />
-      </FieldContent>
-    </Field>
-
-    <Field class="sm:col-span-3">
-      <div class="flex items-baseline justify-between gap-2">
-        <FieldLabel class="text-muted-foreground">Cell height</FieldLabel>
-        <span class="text-muted-foreground text-sm tabular-nums">{gridCellHeight}px</span>
-      </div>
-      <FieldContent class="pt-1">
-        <Slider
-          type="single"
-          bind:value={gridCellHeight}
-          min={CELL_H_MIN}
-          max={CELL_H_MAX}
-          step={1}
-          onValueChange={(h) => syncWidthFromHeight(h)}
-        />
-        <p class="text-muted-foreground mt-1 text-xs">Stays on the selected aspect ratio</p>
-      </FieldContent>
-    </Field>
-
-    <Field class="sm:col-span-3">
-      <FieldLabel class="flex items-center gap-1.5 text-muted-foreground">
-        <CrosshairIcon class="size-3.5 shrink-0" aria-hidden="true" />
-        Initial thumbnail
-      </FieldLabel>
-      <FieldContent>
-        <Select.Root type="single" bind:value={selectedAnchorTitle} items={anchorSelectItems}>
-          <Select.Trigger class="w-full">
-            <span data-slot="select-value">{anchorTriggerLabel}</span>
-          </Select.Trigger>
-          <Select.Content class="max-h-72 overflow-y-auto">
-            <Select.Item value="" label="Manual start position">Manual start position</Select.Item>
-            {#each thumbnailSettings as t (t.windowTitle)}
-              <Select.Item value={t.windowTitle} label={t.windowTitle}>
-                {t.windowTitle}
-              </Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
-        <p class="text-muted-foreground mt-1 text-xs">
-          When set, the grid starts at this thumbnail&apos;s saved position and it occupies the first
-          cell. Choose &quot;Manual start position&quot; to use the Start X/Y sliders.
-        </p>
-      </FieldContent>
-    </Field>
-
-    <Field class="sm:col-span-3">
-      <div class="flex items-baseline justify-between gap-2">
-        <FieldLabel class="text-muted-foreground">Start X</FieldLabel>
-        <span class="text-muted-foreground text-sm tabular-nums">{startXDisplay}</span>
-      </div>
-      <FieldContent class="pt-1">
-        <Slider
-          type="single"
-          bind:value={gridStartX}
-          min={-10000}
-          max={31000}
-          step={1}
-          disabled={useAnchorOrigin}
-        />
-      </FieldContent>
-    </Field>
-
-    <Field class="sm:col-span-3">
-      <div class="flex items-baseline justify-between gap-2">
-        <FieldLabel class="text-muted-foreground">Start Y</FieldLabel>
-        <span class="text-muted-foreground text-sm tabular-nums">{startYDisplay}</span>
-      </div>
-      <FieldContent class="pt-1">
-        <Slider
-          type="single"
-          bind:value={gridStartY}
-          min={-10000}
-          max={31000}
-          step={1}
-          disabled={useAnchorOrigin}
-        />
-      </FieldContent>
-    </Field>
-
-    <Field class="sm:col-span-3">
-      <div class="flex items-baseline justify-between gap-2">
-        <FieldLabel class="text-muted-foreground">Columns</FieldLabel>
-        <span class="text-muted-foreground text-sm tabular-nums">{gridColumns}</span>
-      </div>
-      <FieldContent class="pt-1">
-        <Slider type="single" bind:value={gridColumns} min={1} max={10} step={1} />
-      </FieldContent>
-    </Field>
-
-    <Field class="sm:col-span-3">
-      <FieldLabel class="flex items-center gap-1.5 text-muted-foreground">
-        <MonitorIcon class="size-3.5 shrink-0" aria-hidden="true" />
-        Monitor
-      </FieldLabel>
-      <FieldContent>
-        <Select.Root type="single" bind:value={selectedMonitorIndex} items={monitorSelectItems}>
-          <Select.Trigger class="w-full">
-            <span data-slot="select-value">{monitorTriggerLabel}</span>
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Item value="" label="All / default origin">All / default origin</Select.Item>
-            {#each monitors as m (m.index)}
-              <Select.Item value={String(m.index)} label={formatMonitorLabel(m)}>
-                {formatMonitorLabel(m)}
-              </Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
-      </FieldContent>
-    </Field>
-    <Field class="self-end sm:col-span-3">
-      <FieldContent class="flex w-full flex-row items-center gap-2 flex-initial!">
-        <Checkbox
-          id="grid-layout-only-active-thumbnails"
-          bind:checked={onlyAffectActiveThumbnails}
-          class="cursor-pointer"
-        />
-        <FieldLabel
-          for="grid-layout-only-active-thumbnails"
-          class="text-muted-foreground mb-0 cursor-pointer leading-snug font-normal"
-        >
-          Only active thumbnails
-        </FieldLabel>
-      </FieldContent>
-    </Field>
-  </div>
-
-  <div class="mt-4 flex flex-wrap gap-2">
-    <Button onclick={generatePreview} class="gap-2">
-      <LayoutGridIcon class="size-4 shrink-0" aria-hidden="true" />
-      Generate Preview
-    </Button>
-    <Button onclick={applyLayout} variant="secondary" class="gap-2">
-      <PlayIcon class="size-4 shrink-0" aria-hidden="true" />
-      Apply Layout
-    </Button>
-    <Button
-      onclick={() => void exportGridLayoutPrefs()}
-      variant="outline"
-      class="gap-2"
-      disabled={activeProfileId == null || exportBusy}
-    >
-      <DownloadIcon class="size-4 shrink-0" aria-hidden="true" />
-      Export settings
-    </Button>
-  </div>
-
-  <div class="mt-6 overflow-x-auto">
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Window Title</TableHead>
-          <TableHead>X</TableHead>
-          <TableHead>Y</TableHead>
-          <TableHead>Width</TableHead>
-          <TableHead>Height</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {#each preview as item (item.windowTitle)}
-          <TableRow>
-            <TableCell>{item.windowTitle}</TableCell>
-            <TableCell>{item.x}</TableCell>
-            <TableCell>{item.y}</TableCell>
-            <TableCell>{item.width}</TableCell>
-            <TableCell>{item.height}</TableCell>
-          </TableRow>
-        {/each}
-      </TableBody>
-    </Table>
-  </div>
+    <GridLayoutControls
+      bind:selectedAspectRatio
+      bind:gridCellWidth
+      bind:gridCellHeight
+      bind:gridStartX
+      bind:gridStartY
+      bind:gridColumns
+      bind:onlyAffectActiveThumbnails
+      bind:selectedMonitorIndex
+      bind:selectedAnchorTitle
+      {thumbnailSettings}
+      {monitors}
+      {aspectRatioItems}
+      {monitorSelectItems}
+      {anchorSelectItems}
+      {anchorTriggerLabel}
+      {monitorTriggerLabel}
+      {startXDisplay}
+      {startYDisplay}
+      {useAnchorOrigin}
+      syncHeightFromWidth={syncHeightFromWidth}
+      syncWidthFromHeight={syncWidthFromHeight}
+      {formatMonitorLabel}
+    />
+    <GridLayoutActionBar
+      {activeProfileId}
+      {exportBusy}
+      onGeneratePreview={generatePreview}
+      onApplyLayout={applyLayout}
+      onExportPrefs={exportGridLayoutPrefs}
+    />
+    <GridLayoutPreviewTable {preview} />
   </CardContent>
 </Card>

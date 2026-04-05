@@ -9,8 +9,6 @@
   import { backend } from "$services/backend";
   import type { Profile } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import * as Dialog from "$lib/components/ui/dialog";
   import { toast } from "svelte-sonner";
   import {
     Card,
@@ -19,24 +17,14 @@
     CardHeader,
     CardTitle,
   } from "$lib/components/ui/card";
-  import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-  } from "$lib/components/ui/table";
-  import CheckIcon from "@lucide/svelte/icons/check";
   import PlusIcon from "@lucide/svelte/icons/plus";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import UsersIcon from "@lucide/svelte/icons/users";
-
-  const PROFILE_SWITCH_CAPTURE = "profileSwitch";
-  const PROFILE_HOTKEY_INPUT_CLASS = "min-w-[10rem] cursor-pointer select-none";
-  const PROFILE_HOTKEY_CAPTURE_RING_CLASS = "ring-ring ring-2 ring-offset-2 ring-offset-background";
-
-  type ProfileHotkeyCaptureKind = typeof PROFILE_SWITCH_CAPTURE;
+  import {
+    PROFILE_SWITCH_CAPTURE,
+    type ProfileHotkeyCaptureKind,
+  } from "$lib/components/profiles/profile-hotkeys";
+  import ProfileCreateDialog from "$lib/components/profiles/profile-create-dialog.svelte";
+  import ProfilesTable from "$lib/components/profiles/profiles-table.svelte";
 
   interface HotkeyCapturedPayload {
     value: string;
@@ -148,6 +136,24 @@
     return keyToken === "escape" || keyToken === "esc";
   }
 
+  function onProfileHotkeyKeydown(profile: Profile, e: KeyboardEvent) {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    if (isCapturingProfileHotkey(profile.id)) {
+      stopProfileHotkeyCapture();
+    }
+    profile.switchHotkey = "";
+    void saveHotkey(profile.id, "");
+  }
+
+  function onProfileHotkeyBlur(profile: Profile, e: FocusEvent) {
+    if (isCapturingProfileHotkey(profile.id)) {
+      stopProfileHotkeyCapture();
+      return;
+    }
+    void saveHotkey(profile.id, (e.currentTarget as HTMLInputElement).value);
+  }
+
   async function notifyProfileChanged(profileId: number) {
     const profileName = profiles.find((p) => p.id === profileId)?.name ?? `Profile ${profileId}`;
     try {
@@ -235,132 +241,24 @@
       </Button>
     </div>
 
-    <Dialog.Root
+    <ProfileCreateDialog
       bind:open={createProfileDialogOpen}
+      bind:profileName={newProfileName}
+      onCreate={() => void addProfile()}
       onOpenChange={(open) => {
         if (!open) newProfileName = "";
       }}
-    >
-      <Dialog.Content class="sm:max-w-md">
-        <Dialog.Header>
-          <Dialog.Title>Create profile</Dialog.Title>
-          <Dialog.Description>
-            Enter a name for the new profile. Client groups, thumbnail settings, and process rules are
-            managed per profile.
-          </Dialog.Description>
-        </Dialog.Header>
-        <div class="grid gap-2">
-          <label class="text-muted-foreground text-xs font-medium" for="new-profile-name-dialog">
-            Profile name
-          </label>
-          <Input
-            id="new-profile-name-dialog"
-            bind:value={newProfileName}
-            placeholder="Profile name"
-            onkeydown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void addProfile();
-              }
-            }}
-          />
-        </div>
-        <Dialog.Footer>
-          <Button
-            type="button"
-            variant="outline"
-            onclick={() => {
-              createProfileDialogOpen = false;
-            }}
-          >
-            Cancel
-          </Button>
-          <Button type="button" onclick={addProfile} disabled={!newProfileName.trim()}>
-            Create
-          </Button>
-        </Dialog.Footer>
-      </Dialog.Content>
-    </Dialog.Root>
+    />
 
-    <div class="mt-4 overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Client groups</TableHead>
-            <TableHead>Hotkey</TableHead>
-            <TableHead>Active</TableHead>
-            <TableHead>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {#each profiles as profile (profile.id)}
-            <TableRow>
-              <TableCell>{profile.name}</TableCell>
-              <TableCell>{clientGroupCounts[profile.id] ?? 0}</TableCell>
-              <TableCell>
-                <div class="flex min-w-48 items-center gap-2">
-                  <Input
-                    class="{PROFILE_HOTKEY_INPUT_CLASS} {isCapturingProfileHotkey(profile.id)
-                      ? PROFILE_HOTKEY_CAPTURE_RING_CLASS
-                      : ''}"
-                    readonly
-                    autocomplete="off"
-                    spellcheck={false}
-                    inputmode="none"
-                    aria-readonly="true"
-                    bind:value={profile.switchHotkey}
-                    placeholder={isCapturingProfileHotkey(profile.id)
-                      ? "Press chord, release key…"
-                      : "Click here, then press keys"}
-                    onpointerdown={() => void onProfileSwitchHotkeyPointerDown(profile)}
-                    onkeydown={(e) => {
-                      if (e.key !== "Escape") return;
-                      e.preventDefault();
-                      if (isCapturingProfileHotkey(profile.id)) {
-                        stopProfileHotkeyCapture();
-                      }
-                      profile.switchHotkey = "";
-                      void saveHotkey(profile.id, "");
-                    }}
-                    onpaste={(e) => e.preventDefault()}
-                    onblur={(e) => {
-                      if (isCapturingProfileHotkey(profile.id)) {
-                        stopProfileHotkeyCapture();
-                        return;
-                      }
-                      void saveHotkey(profile.id, (e.currentTarget as HTMLInputElement).value);
-                    }}
-                  />
-                </div>
-              </TableCell>
-              <TableCell>{profile.isActive ? "Yes" : "No"}</TableCell>
-              <TableCell>
-                <div class="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onclick={() => setActive(profile.id)}
-                    disabled={profile.isActive}
-                  >
-                    <CheckIcon class="size-4 shrink-0" aria-hidden="true" />
-                    Set Active
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onclick={() => removeProfile(profile.id)}
-                    disabled={profile.isActive}
-                  >
-                    <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
-                    Delete
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          {/each}
-        </TableBody>
-      </Table>
-    </div>
+    <ProfilesTable
+      {profiles}
+      {clientGroupCounts}
+      {isCapturingProfileHotkey}
+      onProfileSwitchHotkeyPointerDown={onProfileSwitchHotkeyPointerDown}
+      {onProfileHotkeyKeydown}
+      {onProfileHotkeyBlur}
+      onSetActive={setActive}
+      onRemoveProfile={removeProfile}
+    />
   </CardContent>
 </Card>

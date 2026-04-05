@@ -4,8 +4,6 @@
   import { backend } from "$services/backend";
   import type { ClientGroupDetail, Profile, ThumbnailSetting } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import * as Dialog from "$lib/components/ui/dialog";
   import { toast } from "svelte-sonner";
   import {
     Card,
@@ -14,29 +12,15 @@
     CardHeader,
     CardTitle,
   } from "$lib/components/ui/card";
-  import * as Collapsible from "$lib/components/ui/collapsible";
-  import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
   import LayersIcon from "@lucide/svelte/icons/layers";
   import PlusIcon from "@lucide/svelte/icons/plus";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import { Skeleton } from "$lib/components/ui/skeleton";
-  import { availableToAdd, orderedMemberTitles, reorderTitles } from "./client-grouping-helpers";
-
-  const CLIENT_GROUP_FORWARD_CAPTURE = "clientGroupCycleForward";
-  const CLIENT_GROUP_BACKWARD_CAPTURE = "clientGroupCycleBackward";
-
-  const GROUP_HOTKEY_CAPTURE_FIELD = {
-    [CLIENT_GROUP_FORWARD_CAPTURE]: "cycleForwardHotkey",
-    [CLIENT_GROUP_BACKWARD_CAPTURE]: "cycleBackwardHotkey",
-  } as const;
-
-  type GroupHotkeyCaptureKind =
-    | typeof CLIENT_GROUP_FORWARD_CAPTURE
-    | typeof CLIENT_GROUP_BACKWARD_CAPTURE;
-
-  const CYCLE_HOTKEY_INPUT_CLASS = "min-w-[10rem] cursor-pointer select-none";
-  const CYCLE_HOTKEY_CAPTURE_RING_CLASS =
-    "ring-ring ring-2 ring-offset-2 ring-offset-background";
+  import { availableToAdd, orderedMemberTitles, reorderTitles } from "$lib/client-grouping/client-grouping-helpers";
+  import {
+    GROUP_HOTKEY_CAPTURE_FIELD,
+    type GroupHotkeyCaptureKind,
+  } from "$lib/components/client-grouping/client-group-hotkeys";
+  import ClientGroupCreateDialog from "$lib/components/client-grouping/client-group-create-dialog.svelte";
+  import ClientGroupCard from "$lib/components/client-grouping/client-group-card.svelte";
 
   interface HotkeyCapturedPayload {
     value: string;
@@ -53,17 +37,24 @@
   let newGroupName = $state("");
   let createGroupDialogOpen = $state(false);
 
-  /** Member reorder uses pointer events (WebView2 does not reliably fire HTML5 `drop`). */
   let dragGroupId = $state<number | null>(null);
   let dragTitle = $state<string | null>(null);
   let dropBeforeIndex = $state<number | null>(null);
   let memberListRefs = $state<Record<number, HTMLElement | undefined>>({});
   let reorderListEl: HTMLElement | null = null;
   let reorderGroup: ClientGroupDetail | null = null;
-  /** Which group is capturing a cycle hotkey (forward or backward), if any. */
   let captureHotkey = $state<{ groupId: number; kind: GroupHotkeyCaptureKind } | null>(null);
 
   const availableToAddForGroup = (g: ClientGroupDetail) => availableToAdd(g, thumbnailSettings);
+
+  function registerMemberListContainer(groupId: number, el: HTMLElement | null) {
+    if (el) {
+      memberListRefs = { ...memberListRefs, [groupId]: el };
+    } else {
+      const { [groupId]: _removed, ...rest } = memberListRefs;
+      memberListRefs = rest;
+    }
+  }
 
   async function refresh() {
     profiles = await backend.getProfiles();
@@ -124,6 +115,14 @@
 
   function isCapturingHotkey(groupId: number, kind: GroupHotkeyCaptureKind): boolean {
     return captureHotkey?.groupId === groupId && captureHotkey?.kind === kind;
+  }
+
+  function onSaveHotkeysBlur(group: ClientGroupDetail, kind: GroupHotkeyCaptureKind) {
+    if (isCapturingHotkey(group.id, kind)) {
+      stopHotkeyCapture();
+      return;
+    }
+    void saveHotkeys(group);
   }
 
   async function createGroup() {
@@ -346,48 +345,14 @@
         </Button>
       </div>
 
-      <Dialog.Root
+      <ClientGroupCreateDialog
         bind:open={createGroupDialogOpen}
+        bind:groupName={newGroupName}
+        onCreate={() => void createGroup()}
         onOpenChange={(open) => {
           if (!open) newGroupName = "";
         }}
-      >
-        <Dialog.Content class="sm:max-w-md">
-          <Dialog.Header>
-            <Dialog.Title>Create group</Dialog.Title>
-            <Dialog.Description>
-              Enter a name for the new client group. Clients can be added after it is created.
-            </Dialog.Description>
-          </Dialog.Header>
-          <div class="grid gap-2">
-            <label class="text-muted-foreground text-xs font-medium" for="new-group-name-dialog">
-              Group name
-            </label>
-            <Input
-              id="new-group-name-dialog"
-              bind:value={newGroupName}
-              placeholder="Group name"
-              onkeydown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void createGroup();
-                }
-              }}
-            />
-          </div>
-          <Dialog.Footer>
-            <Dialog.Close>
-              {#snippet child({ props })}
-                <Button variant="outline" {...props}>Cancel</Button>
-              {/snippet}
-            </Dialog.Close>
-            <Button type="button" onclick={() => void createGroup()}>
-              <PlusIcon class="size-4 shrink-0" aria-hidden="true" />
-              Create
-            </Button>
-          </Dialog.Footer>
-        </Dialog.Content>
-      </Dialog.Root>
+      />
 
       <p class="text-muted-foreground mt-2 text-sm">
         Active profile:
@@ -405,172 +370,24 @@
 
       <div class="mt-4 flex flex-col gap-3">
         {#each groups as group (group.id)}
-          <Collapsible.Root class="border-border bg-card w-full rounded-lg border shadow-xs">
-            <div class="flex flex-wrap items-center gap-2 px-3 py-2">
-              <Collapsible.Trigger
-                class="text-primary hover:bg-muted/60 rounded-md px-2 py-1 text-left text-sm font-medium underline-offset-4 hover:underline"
-              >
-                {group.name}
-                <span class="text-muted-foreground font-normal">
-                  ({group.members.length} client{group.members.length === 1 ? "" : "s"})
-                </span>
-              </Collapsible.Trigger>
-            </div>
-            <Collapsible.Content class="border-border/80 border-t px-3 pb-3 pt-2">
-                      <div class="mb-3 grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <span class="text-muted-foreground mb-1 block text-xs">Forward hotkey</span>
-                          <Input
-                            class="{CYCLE_HOTKEY_INPUT_CLASS} {isCapturingHotkey(group.id, CLIENT_GROUP_FORWARD_CAPTURE)
-                              ? CYCLE_HOTKEY_CAPTURE_RING_CLASS
-                              : ''}"
-                            readonly
-                            autocomplete="off"
-                            spellcheck={false}
-                            inputmode="none"
-                            title="Click the field, then press the shortcut. Typing is disabled; keys are captured by the app."
-                            aria-readonly="true"
-                            bind:value={group.cycleForwardHotkey}
-                            placeholder={isCapturingHotkey(group.id, CLIENT_GROUP_FORWARD_CAPTURE)
-                              ? "Press chord, release key…"
-                              : "Click here, then press keys"}
-                            onpointerdown={() =>
-                              void onGroupCycleHotkeyPointerDown(group, CLIENT_GROUP_FORWARD_CAPTURE)}
-                            onpaste={(e) => e.preventDefault()}
-                            onblur={() => {
-                              if (isCapturingHotkey(group.id, CLIENT_GROUP_FORWARD_CAPTURE)) {
-                                stopHotkeyCapture();
-                              }
-                              void saveHotkeys(group);
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <span class="text-muted-foreground mb-1 block text-xs">Backward hotkey</span>
-                          <Input
-                            class="{CYCLE_HOTKEY_INPUT_CLASS} {isCapturingHotkey(group.id, CLIENT_GROUP_BACKWARD_CAPTURE)
-                              ? CYCLE_HOTKEY_CAPTURE_RING_CLASS
-                              : ''}"
-                            readonly
-                            autocomplete="off"
-                            spellcheck={false}
-                            inputmode="none"
-                            title="Click the field, then press the shortcut. Typing is disabled; keys are captured by the app."
-                            aria-readonly="true"
-                            bind:value={group.cycleBackwardHotkey}
-                            placeholder={isCapturingHotkey(group.id, CLIENT_GROUP_BACKWARD_CAPTURE)
-                              ? "Press chord, release key…"
-                              : "Click here, then press keys"}
-                            onpointerdown={() =>
-                              void onGroupCycleHotkeyPointerDown(group, CLIENT_GROUP_BACKWARD_CAPTURE)}
-                            onpaste={(e) => e.preventDefault()}
-                            onblur={() => {
-                              if (isCapturingHotkey(group.id, CLIENT_GROUP_BACKWARD_CAPTURE)) {
-                                stopHotkeyCapture();
-                              }
-                              void saveHotkeys(group);
-                            }}
-                          />
-                        </div>
-                      </div>
-                      <div class="mb-3 flex flex-wrap justify-end">
-                        <Button type="button" variant="destructive" onclick={() => void removeGroup(group)}>
-                          <Trash2Icon class="size-4 shrink-0" aria-hidden="true" />
-                          Delete group
-                        </Button>
-                      </div>
-
-                      <div class="mb-2">
-                        <label class="text-muted-foreground mb-1 block text-xs" for="add-client-{group.id}">
-                          Add client to group
-                        </label>
-                        {#if availableToAddForGroup(group).length === 0}
-                          <p class="text-muted-foreground text-xs">
-                            All thumbnail clients are already in this group, or there are no thumbnails yet.
-                          </p>
-                        {:else}
-                          <select
-                            id="add-client-{group.id}"
-                            class="border-input bg-background h-9 w-full max-w-xl rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                            onchange={(e) => {
-                              const v = (e.currentTarget as HTMLSelectElement).value;
-                              (e.currentTarget as HTMLSelectElement).value = "";
-                              if (v) void addMember(group, v);
-                            }}
-                          >
-                            <option value="">Choose a window title...</option>
-                            {#each availableToAddForGroup(group) as title (title)}
-                              <option value={title}>{title}</option>
-                            {/each}
-                          </select>
-                        {/if}
-                      </div>
-
-                      {#if group.members.length === 0}
-                        <p class="text-muted-foreground text-sm">No clients in this group yet.</p>
-                      {:else}
-                        {@const memberTitles = orderedMemberTitles(group)}
-                        <div
-                          bind:this={memberListRefs[group.id]}
-                          class="bg-muted/20 max-w-3xl rounded-lg border border-dashed border-border p-2"
-                          role="list"
-                        >
-                          {#snippet reorderDropSkeleton(spacingClass: string, windowTitle: string)}
-                            <div
-                              class="border-primary/45 bg-muted/15 flex items-center gap-2 rounded-md border border-dashed px-2 py-2 shadow-xs {spacingClass}"
-                            >
-                              <Skeleton class="size-6 shrink-0 rounded-sm" />
-                              <span
-                                class="text-foreground min-w-0 flex-1 truncate text-sm"
-                                title={windowTitle}>{windowTitle}</span>
-                              <Skeleton class="h-8 w-18 shrink-0 rounded-md" />
-                            </div>
-                          {/snippet}
-                          {#each memberTitles as title, i (title)}
-                            {#if dragGroupId === group.id && dragTitle != null && dropBeforeIndex === i}
-                              {@render reorderDropSkeleton("mb-1", dragTitle)}
-                            {/if}
-                            <div
-                              role="listitem"
-                              data-reorder-row={i}
-                              class="hover:bg-muted/40 flex items-center gap-2 rounded-md border border-transparent px-2 py-2 {dragGroupId ===
-                                group.id && dragTitle === title
-                                ? 'hidden'
-                                : ''}"
-                            >
-                              <span
-                                tabindex="-1"
-                                role="button"
-                                aria-grabbed={dragGroupId === group.id && dragTitle === title}
-                                class="text-muted-foreground inline-flex size-6 shrink-0 cursor-grab touch-none select-none active:cursor-grabbing"
-                                onpointerdown={(e) => onGripPointerDown(e, group, title, i)}
-                                onpointermove={onGripPointerMove}
-                                onpointerup={(e) => void onGripPointerUp(e)}
-                                onpointercancel={(e) => void onGripPointerUp(e)}
-                                onlostpointercapture={onGripLostCapture}
-                              >
-                                <GripVerticalIcon class="size-4" aria-hidden="true" />
-                              </span>
-                              <span class="min-w-0 flex-1 truncate text-sm" title={title}>{title}</span>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                draggable={false}
-                                class="shrink-0 text-destructive hover:text-destructive"
-                                onclick={() => void removeMember(group, title)}
-                              >
-                                Remove
-                              </Button>
-                            </div>
-                          {/each}
-                          {#if dragGroupId === group.id && dragTitle != null && dropBeforeIndex === memberTitles.length}
-                            {@render reorderDropSkeleton("mt-1", dragTitle)}
-                          {/if}
-                        </div>
-                      {/if}
-            </Collapsible.Content>
-          </Collapsible.Root>
+          <ClientGroupCard
+            {group}
+            availableToAdd={availableToAddForGroup(group)}
+            {dragGroupId}
+            {dragTitle}
+            {dropBeforeIndex}
+            {isCapturingHotkey}
+            {registerMemberListContainer}
+            {onGroupCycleHotkeyPointerDown}
+            {onSaveHotkeysBlur}
+            onRemoveGroup={removeGroup}
+            onAddMember={addMember}
+            onRemoveMember={removeMember}
+            {onGripPointerDown}
+            {onGripPointerMove}
+            onGripPointerUp={onGripPointerUp}
+            {onGripLostCapture}
+          />
         {/each}
       </div>
     {/if}

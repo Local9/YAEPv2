@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ClientGroupDetail, ThumbnailSetting } from "$models/domain";
-import { availableToAdd, orderedMemberTitles, reorderTitles } from "./client-grouping-helpers";
+import {
+  availableToAdd,
+  orderedMemberTitles,
+  reorderTitles,
+} from "$lib/client-grouping/client-grouping-helpers";
 
 function makeGroup(memberSpecs: Array<{ title: string; order: number }>): ClientGroupDetail {
   return {
