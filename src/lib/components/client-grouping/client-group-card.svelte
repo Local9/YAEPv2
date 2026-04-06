@@ -22,16 +22,12 @@
     dragTitle: string | null;
     dropBeforeIndex: number | null;
     isCapturingHotkey: (groupId: number, kind: GroupHotkeyCaptureKind) => boolean;
-    registerMemberListContainer: (groupId: number, el: HTMLElement | null) => void;
     onGroupCycleHotkeyPointerDown: (group: ClientGroupDetail, kind: GroupHotkeyCaptureKind) => void;
     onSaveHotkeysBlur: (group: ClientGroupDetail, kind: GroupHotkeyCaptureKind) => void;
     onRemoveGroup: (group: ClientGroupDetail) => void;
     onAddMember: (group: ClientGroupDetail, windowTitle: string) => void;
     onRemoveMember: (group: ClientGroupDetail, windowTitle: string) => void;
     onGripPointerDown: (e: PointerEvent, group: ClientGroupDetail, title: string, rowIndex: number) => void;
-    onGripPointerMove: (e: PointerEvent) => void;
-    onGripPointerUp: (e: PointerEvent) => void;
-    onGripLostCapture: () => void;
   }
 
   let {
@@ -41,24 +37,14 @@
     dragTitle,
     dropBeforeIndex,
     isCapturingHotkey,
-    registerMemberListContainer,
     onGroupCycleHotkeyPointerDown,
     onSaveHotkeysBlur,
     onRemoveGroup,
     onAddMember,
     onRemoveMember,
     onGripPointerDown,
-    onGripPointerMove,
-    onGripPointerUp,
-    onGripLostCapture,
   }: Props = $props();
 
-  let listContainer: HTMLElement | undefined = $state();
-
-  $effect(() => {
-    registerMemberListContainer(group.id, listContainer ?? null);
-    return () => registerMemberListContainer(group.id, null);
-  });
 </script>
 
 <Collapsible.Root class="border-border bg-card w-full rounded-lg border shadow-xs">
@@ -155,7 +141,7 @@
     {:else}
       {@const memberTitles = orderedMemberTitles(group)}
       <div
-        bind:this={listContainer}
+        data-member-list
         class="bg-muted/20 max-w-3xl rounded-lg border border-dashed border-border p-2"
         role="list"
       >
@@ -187,10 +173,6 @@
               aria-grabbed={dragGroupId === group.id && dragTitle === title}
               class="text-muted-foreground inline-flex size-6 shrink-0 cursor-grab touch-none select-none active:cursor-grabbing"
               onpointerdown={(e) => onGripPointerDown(e, group, title, i)}
-              onpointermove={onGripPointerMove}
-              onpointerup={(e) => void onGripPointerUp(e)}
-              onpointercancel={(e) => void onGripPointerUp(e)}
-              onlostpointercapture={onGripLostCapture}
             >
               <GripVerticalIcon class="size-4" aria-hidden="true" />
             </span>

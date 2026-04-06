@@ -10,6 +10,7 @@
   interface Props {
     enableThumbnailDragging: boolean;
     startHidden: boolean;
+    diagnosticsLogEnabled: boolean;
     theme: string;
     backupBusy: boolean;
     onSave: () => void;
@@ -20,6 +21,7 @@
   let {
     enableThumbnailDragging = $bindable(),
     startHidden = $bindable(),
+    diagnosticsLogEnabled = $bindable(false),
     theme = $bindable(),
     backupBusy,
     onSave,
@@ -57,6 +59,21 @@
         class="text-muted-foreground mb-0 cursor-pointer leading-snug font-normal"
       >
         Start Hidden
+      </FieldLabel>
+    </FieldContent>
+  </Field>
+  <Field>
+    <FieldContent class="flex w-full flex-row items-center gap-2 flex-initial!">
+      <Checkbox
+        id="settings-diagnostics-log-enabled"
+        bind:checked={diagnosticsLogEnabled}
+        class="cursor-pointer"
+      />
+      <FieldLabel
+        for="settings-diagnostics-log-enabled"
+        class="text-muted-foreground mb-0 cursor-pointer leading-snug font-normal"
+      >
+        Enable Diagnostics Log (portable)
       </FieldLabel>
     </FieldContent>
   </Field>

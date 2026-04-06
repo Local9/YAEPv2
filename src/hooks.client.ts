@@ -1,4 +1,5 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { backend } from "$services/backend";
 
 /**
  * WebView2 + bits-ui (Select, DropdownMenu, Menubar): after choosing an item, scroll-lock /
@@ -39,8 +40,25 @@ function nudgeWebviewFocus(): void {
 
 /** Debounced: bits-ui often finishes closing after the event; avoid stacking many timers during drag. */
 let recoverTimerId: ReturnType<typeof window.setTimeout> | null = null;
+let recoverySequence = 0;
+
+function describeActiveElement(): string {
+  const el = document.activeElement;
+  if (!(el instanceof HTMLElement)) return "none";
+  const tag = el.tagName.toLowerCase();
+  const id = el.id ? `#${el.id}` : "";
+  const cls = el.className && typeof el.className === "string" ? `.${el.className.split(/\s+/).filter(Boolean).slice(0, 2).join(".")}` : "";
+  return `${tag}${id}${cls}`;
+}
+
+function emitUiDiag(level: "debug" | "info" | "warn" | "error", area: string, message: string): void {
+  void backend.frontendDiagLog(level, area, message).catch(() => {
+    /* diagnostics should never break input handling */
+  });
+}
 
 function scheduleWebviewInputRecovery(): void {
+  const seq = ++recoverySequence;
   if (recoverTimerId !== null) {
     window.clearTimeout(recoverTimerId);
   }
@@ -48,8 +66,25 @@ function scheduleWebviewInputRecovery(): void {
     recoverTimerId = null;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        const beforePointer = document.body.style.pointerEvents || "(unset)";
+        const beforeOverflow = document.body.style.overflow || "(unset)";
+        const hadOverlay = hasOpenOverlay();
         clearStaleBodyScrollLock();
         nudgeWebviewFocus();
+        const afterPointer = document.body.style.pointerEvents || "(unset)";
+        const afterOverflow = document.body.style.overflow || "(unset)";
+        const hadBodyLock =
+          beforePointer !== "(unset)" ||
+          beforeOverflow !== "(unset)" ||
+          document.body.style.paddingRight !== "" ||
+          document.body.style.marginRight !== "";
+        if (beforePointer !== afterPointer || beforeOverflow !== afterOverflow || hadBodyLock) {
+          emitUiDiag(
+            "info",
+            "input-recovery",
+            `seq=${seq} overlayOpen=${hadOverlay} body.pointerEvents=${beforePointer}->${afterPointer} body.overflow=${beforeOverflow}->${afterOverflow} active=${describeActiveElement()} path=${window.location.pathname}`
+          );
+        }
       });
     });
   }, 40);

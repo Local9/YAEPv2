@@ -219,6 +219,12 @@ export const backend = {
   setAppSetting(key: string, value: string): Promise<void> {
     return invoke("set_app_setting", { key, value });
   },
+  frontendDiagLog(level: "debug" | "info" | "warn" | "error", area: string, message: string): Promise<void> {
+    return invoke("frontend_diag_log", { level, area, message });
+  },
+  frontendDiagFilePath(): Promise<string> {
+    return invoke("frontend_diag_file_path");
+  },
   hotkeysCaptureStart(captureType: string, targetId?: number): Promise<void> {
     return invoke("hotkeys_capture_start", {
       payload: { captureType, targetId: targetId ?? null }

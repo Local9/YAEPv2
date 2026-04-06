@@ -55,6 +55,43 @@
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
+  function activeElementSummary(): string {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement)) return "none";
+    const tag = el.tagName.toLowerCase();
+    const id = el.id ? `#${el.id}` : "";
+    const cls = typeof el.className === "string"
+      ? `.${el.className.split(/\s+/).filter(Boolean).slice(0, 2).join(".")}`
+      : "";
+    return `${tag}${id}${cls}`;
+  }
+
+  function onNavClick(navHref: string, e: MouseEvent): void {
+    const before = window.location.pathname;
+    const isPrimary = e.button === 0;
+    void backend
+      .frontendDiagLog(
+        "info",
+        "sidebar-nav",
+        `click href=${navHref} before=${before} defaultPrevented=${e.defaultPrevented} button=${e.button} ctrl=${e.ctrlKey} meta=${e.metaKey} shift=${e.shiftKey}`
+      )
+      .catch(() => {});
+    if (!isPrimary || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    window.setTimeout(() => {
+      const after = window.location.pathname;
+      if (after !== before) return;
+      const bodyPointer = document.body.style.pointerEvents || "(unset)";
+      const bodyOverflow = document.body.style.overflow || "(unset)";
+      void backend
+        .frontendDiagLog(
+          "warn",
+          "sidebar-nav",
+          `no-route-change href=${navHref} before=${before} after=${after} defaultPrevented=${e.defaultPrevented} body.pointerEvents=${bodyPointer} body.overflow=${bodyOverflow} active=${activeElementSummary()}`
+        )
+        .catch(() => {});
+    }, 350);
+  }
+
   onMount(() => {
     if (isThumbnailOverlay || isWidgetOverlay) {
       appLoading = false;
@@ -70,6 +107,12 @@
 
     void (async () => {
       try {
+        try {
+          const diagPath = await backend.frontendDiagFilePath();
+          await backend.frontendDiagLog("info", "boot", `frontend mounted; diagnostics file=${diagPath}`);
+        } catch {
+          /* diagnostics are best-effort */
+        }
         try {
           const t = await backend.getAppSetting("Theme");
           if (t === "Light") setMode("light");
@@ -153,7 +196,7 @@
                     tooltipContent={nav.label}
                   >
                     {#snippet child({ props })}
-                      <a href={nav.href} {...props}>
+                      <a href={nav.href} {...props} onclick={(e) => onNavClick(nav.href, e)}>
                         <nav.Icon aria-hidden="true" />
                         <span>{nav.label}</span>
                       </a>

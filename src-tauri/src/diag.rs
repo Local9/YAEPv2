@@ -7,7 +7,11 @@
 //! line before exit indicates the last completed stage.
 
 use std::io::Write;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+
+static FILE_LOGGING_ENABLED: AtomicBool = AtomicBool::new(false);
 
 pub fn install_panic_hook() {
     let default = std::panic::take_hook();
@@ -50,4 +54,56 @@ pub fn trace(module: &'static str, detail: &str) {
         .unwrap_or(0);
     let _ = writeln!(std::io::stderr(), "YAEP_DIAG {ts} [{module}] {detail}");
     let _ = std::io::stderr().flush();
+    append_file_line(&format!("YAEP_DIAG {ts} [{module}] {detail}"));
+}
+
+fn diagnostics_file_path() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            return parent.join("diagnostics.log");
+        }
+    }
+    std::env::current_dir()
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("diagnostics.log")
+}
+
+pub fn diagnostics_file_path_string() -> String {
+    diagnostics_file_path().display().to_string()
+}
+
+fn append_file_line(line: &str) {
+    if !file_logging_enabled() {
+        return;
+    }
+    let path = diagnostics_file_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
+pub fn emit_ui(level: &str, area: &str, message: &str) {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let line = format!("YAEP_UI_DIAG {ts} [{level}] [{area}] {message}");
+    let _ = writeln!(std::io::stderr(), "{line}");
+    let _ = std::io::stderr().flush();
+    append_file_line(&line);
+}
+
+fn file_logging_enabled() -> bool {
+    FILE_LOGGING_ENABLED.load(Ordering::Relaxed)
+}
+
+pub fn set_file_logging_enabled(enabled: bool) {
+    FILE_LOGGING_ENABLED.store(enabled, Ordering::Relaxed);
 }

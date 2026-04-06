@@ -96,6 +96,7 @@ fn validate_app_setting_key(key: &str) -> Result<(), String> {
     const ALLOWED_KEYS: &[&str] = &[
         "EnableThumbnailDragging",
         "StartHidden",
+        "DiagnosticsLogEnabled",
         "Theme",
         "DrawerScreenIndex",
         "DrawerHardwareId",
@@ -116,7 +117,11 @@ fn validate_app_setting_key(key: &str) -> Result<(), String> {
 fn validate_app_setting_value(key: &str, value: &str) -> Result<(), String> {
     let trimmed = value.trim();
     match key {
-        "EnableThumbnailDragging" | "StartHidden" | "DrawerIsVisible" | "DrawerIsEnabled" => {
+        "EnableThumbnailDragging"
+        | "StartHidden"
+        | "DiagnosticsLogEnabled"
+        | "DrawerIsVisible"
+        | "DrawerIsEnabled" => {
             if !is_boolean_setting_value(trimmed) {
                 return Err("Setting value must be true or false".to_string());
             }
@@ -894,10 +899,37 @@ fn get_app_setting(state: State<'_, AppState>, key: String) -> Result<Option<Str
 fn set_app_setting(state: State<'_, AppState>, key: String, value: String) -> Result<(), String> {
     validate_app_setting_key(&key)?;
     validate_app_setting_value(&key, &value)?;
+    if key == "DiagnosticsLogEnabled" {
+        let enabled = value.trim().eq_ignore_ascii_case("true");
+        diag::set_file_logging_enabled(enabled);
+    }
     state
         .db
         .set_app_setting(key, value)
         .map_err(|e| sanitize_error("set_app_setting", e))
+}
+
+#[tauri::command]
+fn frontend_diag_log(level: String, area: String, message: String) -> Result<(), String> {
+    let level = level.trim().to_ascii_uppercase();
+    let area = area.trim();
+    let message = message.trim();
+    if level.is_empty() || level.len() > 16 {
+        return Err("invalid diagnostic level".to_string());
+    }
+    if area.is_empty() || area.len() > 64 {
+        return Err("invalid diagnostic area".to_string());
+    }
+    if message.is_empty() || message.len() > 1024 {
+        return Err("invalid diagnostic message".to_string());
+    }
+    diag::emit_ui(&level, area, message);
+    Ok(())
+}
+
+#[tauri::command]
+fn frontend_diag_file_path() -> Result<String, String> {
+    Ok(diag::diagnostics_file_path_string())
 }
 
 #[derive(Debug, Deserialize)]
@@ -1438,6 +1470,7 @@ fn yaep_import_settings_from_path(state: State<'_, AppState>, app_handle: AppHan
 pub fn run() {
     diag::install_panic_hook();
     diag::trace("boot", "run() entered");
+    diag::emit_ui("INFO", "boot", "release diagnostics logger initialized");
     #[cfg(target_os = "windows")]
     set_windows_app_user_model_id();
     if let Err(error) = instance_guard::ensure_single_instance() {
@@ -1453,6 +1486,21 @@ pub fn run() {
             return;
         }
     };
+    let diagnostics_file_logging_enabled = state
+        .db
+        .get_app_setting("DiagnosticsLogEnabled".to_string())
+        .ok()
+        .flatten()
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    diag::set_file_logging_enabled(diagnostics_file_logging_enabled);
+    diag::emit_ui(
+        "INFO",
+        "boot",
+        &format!(
+            "diagnostics file logging enabled={diagnostics_file_logging_enabled} path={}",
+            diag::diagnostics_file_path_string()
+        ),
+    );
     diag::trace("boot", "AppState initialized");
     let boot_cwd = std::env::current_dir()
         .map(|p| p.display().to_string())
@@ -1554,6 +1602,8 @@ pub fn run() {
             save_drawer_settings,
             get_app_setting,
             set_app_setting,
+            frontend_diag_log,
+            frontend_diag_file_path,
             hotkeys_capture_start,
             hotkeys_capture_stop,
             grid_preview_layout,

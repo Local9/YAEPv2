@@ -40,21 +40,15 @@
   let dragGroupId = $state<number | null>(null);
   let dragTitle = $state<string | null>(null);
   let dropBeforeIndex = $state<number | null>(null);
-  let memberListRefs = $state<Record<number, HTMLElement | undefined>>({});
   let reorderListEl: HTMLElement | null = null;
   let reorderGroup: ClientGroupDetail | null = null;
+  let reorderPointerId: number | null = null;
   let captureHotkey = $state<{ groupId: number; kind: GroupHotkeyCaptureKind } | null>(null);
 
   const availableToAddForGroup = (g: ClientGroupDetail) => availableToAdd(g, thumbnailSettings);
-
-  function registerMemberListContainer(groupId: number, el: HTMLElement | null) {
-    if (el) {
-      memberListRefs = { ...memberListRefs, [groupId]: el };
-    } else {
-      const { [groupId]: _removed, ...rest } = memberListRefs;
-      memberListRefs = rest;
-    }
-  }
+  const diagClientGrouping = (message: string): void => {
+    void backend.frontendDiagLog("info", "client-grouping", message).catch(() => {});
+  };
 
   async function refresh() {
     profiles = await backend.getProfiles();
@@ -190,6 +184,7 @@
   function clearMemberReorderState() {
     reorderListEl = null;
     reorderGroup = null;
+    reorderPointerId = null;
     dragGroupId = null;
     dragTitle = null;
     dropBeforeIndex = null;
@@ -237,11 +232,13 @@
     rowIndex: number,
   ) {
     if (e.button !== 0) return;
+    diagClientGrouping(`pointer-start pointerId=${e.pointerId} rowIndex=${rowIndex} groupId=${group.id}`);
     e.preventDefault();
-    const listEl = memberListRefs[group.id];
+    const target = e.currentTarget;
+    if (!(target instanceof HTMLElement)) return;
+    const listEl = target.closest<HTMLElement>("[data-member-list]");
     if (!listEl) return;
-    const target = e.currentTarget as HTMLElement;
-    target.setPointerCapture(e.pointerId);
+    reorderPointerId = e.pointerId;
     reorderListEl = listEl;
     reorderGroup = group;
     dragGroupId = group.id;
@@ -249,18 +246,13 @@
     dropBeforeIndex = rowIndex;
   }
 
-  function onGripPointerMove(e: PointerEvent) {
+  function onWindowPointerMove(e: PointerEvent) {
+    if (reorderPointerId == null || e.pointerId !== reorderPointerId) return;
     if (reorderListEl == null || reorderGroup == null) return;
     updateDropIndexFromPointer(e.clientY);
   }
 
-  async function onGripPointerUp(e: PointerEvent) {
-    const el = e.currentTarget as HTMLElement;
-    try {
-      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
+  async function finishMemberReorder() {
     const g = reorderGroup;
     const title = dragTitle;
     const beforeIdx = dropBeforeIndex;
@@ -281,14 +273,68 @@
     }
   }
 
-  function onGripLostCapture() {
-    if (reorderListEl !== null || reorderGroup !== null) {
-      clearMemberReorderState();
-    }
+  async function onWindowPointerUp(e: PointerEvent) {
+    const matched = reorderPointerId != null && e.pointerId === reorderPointerId;
+    diagClientGrouping(`pointer-up pointerId=${e.pointerId} matched=${matched}`);
+    if (!matched) return;
+    await finishMemberReorder();
+  }
+
+  async function onWindowPointerCancel(e: PointerEvent) {
+    const matched = reorderPointerId != null && e.pointerId === reorderPointerId;
+    diagClientGrouping(`pointer-cancel pointerId=${e.pointerId} matched=${matched}`);
+    if (!matched) return;
+    await finishMemberReorder();
   }
 
   onMount(() => {
+    const clip = (value: string, max = 80): string =>
+      value.length > max ? `${value.slice(0, max - 1)}…` : value;
+    const targetSummary = (target: EventTarget | null): string => {
+      if (!(target instanceof Element)) return "unknown";
+      const tag = target.tagName.toLowerCase();
+      const id = target.id ? `#${clip(target.id, 24)}` : "";
+      const classToken = target.classList.item(0);
+      const cls = classToken ? `.${clip(classToken, 32)}` : "";
+      return `${tag}${id}${cls}`;
+    };
+    let lastCaptureLogAt = 0;
+    const onDocumentCapturedPointerDown = (e: PointerEvent) => {
+      const now = Date.now();
+      if (now - lastCaptureLogAt < 500) return;
+      lastCaptureLogAt = now;
+      const path = e.composedPath().slice(0, 3).map((x) => targetSummary(x)).join(">");
+      diagClientGrouping(`capture pointerdown target=${targetSummary(e.target)} path=${path}`);
+    };
+    const onDocumentCapturedClick = (e: MouseEvent) => {
+      const now = Date.now();
+      if (now - lastCaptureLogAt < 500) return;
+      lastCaptureLogAt = now;
+      const path = e.composedPath().slice(0, 3).map((x) => targetSummary(x)).join(">");
+      diagClientGrouping(`capture click target=${targetSummary(e.target)} path=${path}`);
+    };
+    const onWindowError = (e: ErrorEvent) => {
+      const text = e.message || "unknown";
+      diagClientGrouping(`window-error ${clip(text, 140)}`);
+    };
+    const onWindowUnhandledRejection = (e: PromiseRejectionEvent) => {
+      const reason =
+        typeof e.reason === "string"
+          ? e.reason
+          : e.reason instanceof Error
+            ? e.reason.message
+            : String(e.reason);
+      diagClientGrouping(`window-unhandledrejection ${clip(reason, 140)}`);
+    };
+    diagClientGrouping("mounted");
     void refresh();
+    document.addEventListener("pointerdown", onDocumentCapturedPointerDown, true);
+    document.addEventListener("click", onDocumentCapturedClick, true);
+    window.addEventListener("error", onWindowError);
+    window.addEventListener("unhandledrejection", onWindowUnhandledRejection);
+    window.addEventListener("pointermove", onWindowPointerMove, true);
+    window.addEventListener("pointerup", onWindowPointerUp, true);
+    window.addEventListener("pointercancel", onWindowPointerCancel, true);
     let unlistenCaptured: UnlistenFn | undefined;
     void listen<HotkeyCapturedPayload>("hotkeyCaptured", (event) => {
       const p = event.payload;
@@ -305,6 +351,14 @@
       unlistenCaptured = u;
     });
     return () => {
+      document.removeEventListener("pointerdown", onDocumentCapturedPointerDown, true);
+      document.removeEventListener("click", onDocumentCapturedClick, true);
+      window.removeEventListener("error", onWindowError);
+      window.removeEventListener("unhandledrejection", onWindowUnhandledRejection);
+      window.removeEventListener("pointermove", onWindowPointerMove, true);
+      window.removeEventListener("pointerup", onWindowPointerUp, true);
+      window.removeEventListener("pointercancel", onWindowPointerCancel, true);
+      clearMemberReorderState();
       unlistenCaptured?.();
       stopHotkeyCapture();
     };
@@ -377,16 +431,12 @@
             {dragTitle}
             {dropBeforeIndex}
             {isCapturingHotkey}
-            {registerMemberListContainer}
             {onGroupCycleHotkeyPointerDown}
             {onSaveHotkeysBlur}
             onRemoveGroup={removeGroup}
             onAddMember={addMember}
             onRemoveMember={removeMember}
             {onGripPointerDown}
-            {onGripPointerMove}
-            onGripPointerUp={onGripPointerUp}
-            {onGripLostCapture}
           />
         {/each}
       </div>
