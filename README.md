@@ -34,9 +34,9 @@ Feature suggestions are welcome. Please note this is still primarily a personal 
 - Grid tooling with multi-monitor support
   - Arrange thumbnails in a grid automatically
   - Select groups so only those thumbnails are affected
-- Mumble Links support
-  - Check at least one link to show the Mumble Links window
-  - Hold right mouse button to move the window
+- Mumble Links widget support
+  - Open the Mumble Links widget by checking at least one link
+  - Hold right mouse button to move the widget window
 - Character and user settings management
   - Inspired by [EANM](https://github.com/FontaineRiant/EANM) to reduce folder hunting
 
