@@ -72,7 +72,7 @@
           inputmode="none"
           title="Click the field, then press the shortcut. Typing is disabled; keys are captured by the app."
           aria-readonly="true"
-          bind:value={group.cycleForwardHotkey}
+          value={group.cycleForwardHotkey}
           placeholder={isCapturingHotkey(group.id, CLIENT_GROUP_FORWARD_CAPTURE)
             ? "Press chord, release key…"
             : "Click here, then press keys"}
@@ -93,7 +93,7 @@
           inputmode="none"
           title="Click the field, then press the shortcut. Typing is disabled; keys are captured by the app."
           aria-readonly="true"
-          bind:value={group.cycleBackwardHotkey}
+          value={group.cycleBackwardHotkey}
           placeholder={isCapturingHotkey(group.id, CLIENT_GROUP_BACKWARD_CAPTURE)
             ? "Press chord, release key…"
             : "Click here, then press keys"}
