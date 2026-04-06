@@ -18,6 +18,7 @@
   let enableThumbnailDragging = $state(true);
   let startHidden = $state(false);
   let diagnosticsLogEnabled = $state(false);
+  let requireAppFocusForHotkeys = $state(false);
   let theme = $state("Dark");
   let saveStatus = $state("");
   let error = $state("");
@@ -33,10 +34,12 @@
       const dragging = await backend.getAppSetting("EnableThumbnailDragging");
       const hidden = await backend.getAppSetting("StartHidden");
       const diagnostics = await backend.getAppSetting("DiagnosticsLogEnabled");
+      const globalHotkeys = await backend.getAppSetting("EnableGlobalHotkeys");
       const currentTheme = await backend.getAppSetting("Theme");
       enableThumbnailDragging = dragging == null ? true : dragging === "true";
       startHidden = hidden == null ? false : hidden === "true";
       diagnosticsLogEnabled = diagnostics == null ? false : diagnostics === "true";
+      requireAppFocusForHotkeys = globalHotkeys == null ? false : globalHotkeys === "true";
       theme = currentTheme ?? "Dark";
       error = "";
     } catch (e) {
@@ -97,6 +100,7 @@
       await backend.setAppSetting("EnableThumbnailDragging", String(enableThumbnailDragging));
       await backend.setAppSetting("StartHidden", String(startHidden));
       await backend.setAppSetting("DiagnosticsLogEnabled", String(diagnosticsLogEnabled));
+      await backend.setAppSetting("EnableGlobalHotkeys", String(requireAppFocusForHotkeys));
       await backend.setAppSetting("Theme", theme);
       setMode(theme === "Light" ? "light" : "dark");
       saveStatus = "Settings saved";
@@ -132,6 +136,7 @@
       bind:enableThumbnailDragging
       bind:startHidden
       bind:diagnosticsLogEnabled
+      bind:requireAppFocusForHotkeys
       bind:theme
       {backupBusy}
       onSave={() => void save()}

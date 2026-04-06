@@ -18,6 +18,7 @@ import type {
   EveChatChannel,
   EveChatChannelType,
   EveLogSettings,
+  AppReleaseCheck,
   WidgetSnapshot,
   WidgetOverlayLayout,
   WidgetOverlaySettings,
@@ -30,6 +31,9 @@ import type {
 export const backend = {
   health(): Promise<HealthSnapshot> {
     return invoke("health");
+  },
+  checkLatestRelease(): Promise<AppReleaseCheck> {
+    return invoke("check_latest_release");
   },
   listMonitors(): Promise<MonitorInfoDto[]> {
     return invoke("list_monitors_cmd");

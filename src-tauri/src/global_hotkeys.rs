@@ -687,8 +687,21 @@ fn dispatch_hotkey_action(action: HotkeyAction) {
             }
             HotkeyAction::CycleGroup { group_id, forward } => {
                 let direction = if forward { "forward" } else { "backward" };
+                let enable_global_hotkeys = state
+                    .db
+                    .get_app_setting("EnableGlobalHotkeys".to_string())
+                    .ok()
+                    .flatten()
+                    .map(|v| v.eq_ignore_ascii_case("true"))
+                    .unwrap_or(false);
+                let only_when_foreground_is_monitored = !enable_global_hotkeys;
                 if let Err(e) =
-                    crate::cycle_client_group_internal(&*state, group_id, direction, true)
+                    crate::cycle_client_group_internal(
+                        &*state,
+                        group_id,
+                        direction,
+                        only_when_foreground_is_monitored,
+                    )
                 {
                     diag::trace(
                         "hotkeys",

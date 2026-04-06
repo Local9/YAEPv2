@@ -97,6 +97,7 @@ fn validate_app_setting_key(key: &str) -> Result<(), String> {
         "EnableThumbnailDragging",
         "StartHidden",
         "DiagnosticsLogEnabled",
+        "EnableGlobalHotkeys",
         "Theme",
         "DrawerScreenIndex",
         "DrawerHardwareId",
@@ -120,6 +121,7 @@ fn validate_app_setting_value(key: &str, value: &str) -> Result<(), String> {
         "EnableThumbnailDragging"
         | "StartHidden"
         | "DiagnosticsLogEnabled"
+        | "EnableGlobalHotkeys"
         | "DrawerIsVisible"
         | "DrawerIsEnabled" => {
             if !is_boolean_setting_value(trimmed) {
@@ -191,6 +193,72 @@ fn health(state: State<'_, AppState>) -> Result<HealthSnapshot, String> {
         app: "yaep-rust",
         backend_ready: true,
         active_profile_id: state.db.active_profile_id(),
+    })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppReleaseCheck {
+    current_version: String,
+    latest_version: Option<String>,
+    update_available: bool,
+    release_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubLatestRelease {
+    tag_name: String,
+    html_url: String,
+}
+
+fn parse_version_parts(version: &str) -> Vec<u64> {
+    version
+        .trim()
+        .trim_start_matches(['v', 'V'])
+        .split('.')
+        .map(|p| p.parse::<u64>().unwrap_or(0))
+        .collect()
+}
+
+fn is_remote_newer(current_version: &str, latest_version: &str) -> bool {
+    let current = parse_version_parts(current_version);
+    let latest = parse_version_parts(latest_version);
+    let len = current.len().max(latest.len());
+    for i in 0..len {
+        let c = *current.get(i).unwrap_or(&0);
+        let l = *latest.get(i).unwrap_or(&0);
+        if l > c {
+            return true;
+        }
+        if l < c {
+            return false;
+        }
+    }
+    false
+}
+
+#[tauri::command]
+fn check_latest_release() -> Result<AppReleaseCheck, String> {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let mut response = ureq::get("https://api.github.com/repos/Local9/YAEPv2/releases/latest")
+        .header("User-Agent", "yaep-rust")
+        .call()
+        .map_err(|e| sanitize_error("check_latest_release", e.to_string()))?;
+    let latest: GithubLatestRelease = response
+        .body_mut()
+        .read_json()
+        .map_err(|e| sanitize_error("check_latest_release", e.to_string()))?;
+
+    let update_available = is_remote_newer(&current_version, &latest.tag_name);
+    Ok(AppReleaseCheck {
+        current_version,
+        latest_version: Some(latest.tag_name),
+        update_available,
+        release_url: if update_available {
+            Some(latest.html_url)
+        } else {
+            None
+        },
     })
 }
 
@@ -1624,6 +1692,7 @@ pub fn run() {
             eve_fetch_character_name,
             activate_window_by_pid,
             open_external_url,
+            check_latest_release,
             app_ready,
             widget_get_snapshot,
             get_runtime_thumbnail_state,

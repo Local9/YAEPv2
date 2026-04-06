@@ -117,6 +117,13 @@ export type HealthSnapshot = {
   activeProfileId: number | null;
 };
 
+export type AppReleaseCheck = {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseUrl: string | null;
+};
+
 /** Position and size for the overlay widget shell (drag/resize). */
 export type WidgetLayoutRect = {
   x: number;

@@ -11,6 +11,7 @@
     enableThumbnailDragging: boolean;
     startHidden: boolean;
     diagnosticsLogEnabled: boolean;
+    requireAppFocusForHotkeys: boolean;
     theme: string;
     backupBusy: boolean;
     onSave: () => void;
@@ -22,6 +23,7 @@
     enableThumbnailDragging = $bindable(),
     startHidden = $bindable(),
     diagnosticsLogEnabled = $bindable(false),
+    requireAppFocusForHotkeys = $bindable(false),
     theme = $bindable(),
     backupBusy,
     onSave,
@@ -74,6 +76,21 @@
         class="text-muted-foreground mb-0 cursor-pointer leading-snug font-normal"
       >
         Enable Diagnostics Log (portable)
+      </FieldLabel>
+    </FieldContent>
+  </Field>
+  <Field>
+    <FieldContent class="flex w-full flex-row items-center gap-2 flex-initial!">
+      <Checkbox
+        id="settings-enable-global-hotkeys"
+        bind:checked={requireAppFocusForHotkeys}
+        class="cursor-pointer"
+      />
+      <FieldLabel
+        for="settings-enable-global-hotkeys"
+        class="text-muted-foreground mb-0 cursor-pointer leading-snug font-normal"
+      >
+        Enable Hotkeys to work Globally
       </FieldLabel>
     </FieldContent>
   </Field>
