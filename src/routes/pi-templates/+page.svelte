@@ -188,10 +188,6 @@
     try {
       const files = await backend.eveListPiTemplates();
       templateFiles = files;
-      if (files.length > 0) {
-        selectedFile = files[0];
-        await loadTemplateContent(files[0]);
-      }
     } catch (error) {
       listError = error instanceof Error ? error.message : String(error);
     } finally {
@@ -248,7 +244,9 @@
   {:else}
     <PiTemplateFileSelect bind:selectedFile {templateFiles} onfilechange={() => void onTemplateChange()} />
 
-    {#if contentLoading}
+    {#if !selectedFile}
+      <p class="text-sm text-muted-foreground">Select a template to load.</p>
+    {:else if contentLoading}
       <p class="text-sm text-muted-foreground">Loading template...</p>
     {:else if contentError}
       <p class="text-sm text-destructive">{contentError}</p>
