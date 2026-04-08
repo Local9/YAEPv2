@@ -19,7 +19,7 @@
     type PiRouteMaterialStub
   } from "$lib/pi-template/template-to-flow";
   import { backend } from "$services/backend";
-  import type { EveTypeSnapshot, PiTemplate } from "$models/domain";
+  import type { EveStaticDataStatus, EveTypeSnapshot, PiTemplate } from "$models/domain";
 
   let templateFiles = $state<string[]>([]);
   let selectedFile = $state("");
@@ -36,6 +36,11 @@
   let typesLookupPending = $state(false);
   let typesLookupError = $state("");
   let selectedFlowNodeId = $state<string | null>(null);
+  let eveStaticStatus = $state<EveStaticDataStatus | null>(null);
+
+  let staticDataCatalogEmpty = $derived(
+    eveStaticStatus != null && eveStaticStatus.sdeSqliteTypesCount === 0
+  );
 
   /** Stable signature when SDE map changes; forces SvelteFlow remount so XYFlow reapplies node `data` (adoptUserNodes skips updates when userNode reference is unchanged). */
   let piTypesLookupSignature = $derived.by(() => Object.keys(piTypesById).sort().join("\u001f"));
@@ -220,11 +225,19 @@
 
   onMount(() => {
     void loadTemplateList();
+    void backend
+      .eveStaticDataStatus()
+      .then((s) => {
+        eveStaticStatus = s;
+      })
+      .catch(() => {
+        eveStaticStatus = null;
+      });
   });
 </script>
 
 <div class="flex max-w-6xl flex-col gap-4">
-  <PiTemplateIntro />
+  <PiTemplateIntro staticDataCatalogEmpty={staticDataCatalogEmpty} />
 
   {#if listLoading}
     <p class="text-sm text-muted-foreground">Loading templates...</p>
