@@ -1,19 +1,30 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Background, Controls, SvelteFlow } from "@xyflow/svelte";
   import type { Edge, Node } from "@xyflow/svelte";
-  import "@xyflow/svelte/dist/style.css";
+  import type { OnSelectionChange } from "@xyflow/svelte";
 
-  import PiPlacementNode from "$lib/components/pi-template/pi-placement-node.svelte";
-  import { piTemplateToFlowElements, type PiPlacementNodeData } from "$lib/pi-template/template-to-flow";
+  import PiTemplateDecodedComment from "$lib/components/pi-template/pi-template-decoded-comment.svelte";
+  import PiTemplateFileSelect from "$lib/components/pi-template/pi-template-file-select.svelte";
+  import PiTemplateIntro from "$lib/components/pi-template/pi-template-intro.svelte";
+  import PiTemplateSdeStatus from "$lib/components/pi-template/pi-template-sde-status.svelte";
+  import PiTemplateSummaryGrid from "$lib/components/pi-template/pi-template-summary-stats.svelte";
+  import PiTemplateWorkspace from "$lib/components/pi-template/pi-template-workspace.svelte";
+  import type {
+    PiTemplateSummaryStats,
+    SelectedPlacementDetail
+  } from "$lib/pi-template/pi-template-page.types";
+  import {
+    piTemplateToFlowElements,
+    type PiPlacementNodeData,
+    type PiRouteMaterialStub
+  } from "$lib/pi-template/template-to-flow";
   import { backend } from "$services/backend";
-  import type { PiTemplate } from "$models/domain";
-
-  const nodeTypes = { piPlacement: PiPlacementNode };
+  import type { EveTypeSnapshot, PiTemplate } from "$models/domain";
 
   let templateFiles = $state<string[]>([]);
   let selectedFile = $state("");
   let templateModel = $state<PiTemplate | null>(null);
+  let piTypesById = $state<Record<string, EveTypeSnapshot>>({});
 
   let flowNodes = $state<Node<PiPlacementNodeData>[]>([]);
   let flowEdges = $state<Edge[]>([]);
@@ -22,20 +33,44 @@
   let listError = $state("");
   let contentLoading = $state(false);
   let contentError = $state("");
+  let typesLookupPending = $state(false);
+  let typesLookupError = $state("");
+  let selectedFlowNodeId = $state<string | null>(null);
+
+  /** Stable signature when SDE map changes; forces SvelteFlow remount so XYFlow reapplies node `data` (adoptUserNodes skips updates when userNode reference is unchanged). */
+  let piTypesLookupSignature = $derived.by(() => Object.keys(piTypesById).sort().join("\u001f"));
+
+  let flowRemountKey = $derived(`${selectedFile}\u0000${piTypesLookupSignature}`);
 
   let decodedComment = $derived(
     templateModel ? decodeHtmlEntities(templateModel.Cmt) : ""
   );
 
-  let templateSummary = $derived.by(() => {
+  let templateSummary = $derived.by((): PiTemplateSummaryStats | null => {
     if (!templateModel) return null;
+    const plnId = Number(templateModel.Pln);
+    const plnSnap = Number.isFinite(plnId) ? piTypesById[String(plnId)] ?? null : null;
+    let totalStructureCostIsk = 0;
+    let placementsMissingBasePrice = 0;
+    for (const pin of templateModel.P) {
+      const snap = piTypesById[String(pin.T)];
+      const p = snap?.basePrice;
+      if (p != null && Number.isFinite(p)) {
+        totalStructureCostIsk += p;
+      } else {
+        placementsMissingBasePrice++;
+      }
+    }
     return {
       cmdCtrLv: templateModel.CmdCtrLv,
       diam: templateModel.Diam,
-      pln: templateModel.Pln,
+      plnId: templateModel.Pln,
+      plnTypeName: plnSnap?.name?.trim() ?? null,
       placements: templateModel.P.length,
       routes: templateModel.R.length,
-      links: templateModel.L.length
+      links: templateModel.L.length,
+      totalStructureCostIsk,
+      placementsMissingBasePrice
     };
   });
 
@@ -51,14 +86,90 @@
 
   $effect(() => {
     const t = templateModel;
+    selectedFlowNodeId = null;
+    if (!t) {
+      piTypesById = {};
+      typesLookupPending = false;
+      typesLookupError = "";
+      return;
+    }
+    // PI-Template-Field-Reference: P[].T = structure type IDs, R[].T = routed commodity type IDs (same SDE type-id space).
+    const fromPins = t.P.map((p) => Number(p.T));
+    const fromRoutes = t.R.map((r) => Number(r.T));
+    const plnId = Number(t.Pln);
+    const ids = [
+      ...new Set([
+        ...fromPins,
+        ...fromRoutes,
+        ...(Number.isFinite(plnId) ? [plnId] : [])
+      ])
+    ]
+      .filter((id) => Number.isFinite(id))
+      .sort((a, b) => a - b);
+    let cancelled = false;
+    typesLookupPending = true;
+    typesLookupError = "";
+    void (async () => {
+      try {
+        const m = await backend.eveSdeLookupTypes(ids);
+        if (!cancelled) piTypesById = m && typeof m === "object" && !Array.isArray(m) ? m : {};
+      } catch (e) {
+        if (!cancelled) {
+          piTypesById = {};
+          typesLookupError = e instanceof Error ? e.message : String(e);
+        }
+      } finally {
+        if (!cancelled) typesLookupPending = false;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  $effect(() => {
+    const t = templateModel;
+    const types = piTypesById;
     if (!t) {
       flowNodes = [];
       flowEdges = [];
       return;
     }
-    const { nodes, edges } = piTemplateToFlowElements(t);
+    const { nodes, edges } = piTemplateToFlowElements(t, types);
     flowNodes = nodes;
     flowEdges = edges;
+  });
+
+  const onFlowSelectionChange: OnSelectionChange<Node<PiPlacementNodeData>> = (params) => {
+    if (params.nodes.length === 1) {
+      selectedFlowNodeId = params.nodes[0].id;
+    } else {
+      selectedFlowNodeId = null;
+    }
+  };
+
+  /** Prefer template + live `piTypesById` so SDE fields stay correct even if flow node `data` is stale internally. */
+  let selectedPlacementResolved = $derived.by((): SelectedPlacementDetail | null => {
+    if (!templateModel || !selectedFlowNodeId) return null;
+    const m = /^p-(\d+)$/.exec(selectedFlowNodeId);
+    if (!m) return null;
+    const idx = Number(m[1]);
+    const pin = templateModel.P[idx];
+    if (!pin) return null;
+    const typeId = Number(pin.T);
+    const typeDetails = piTypesById[String(typeId)] ?? null;
+    const node = flowNodes.find((n) => n.id === selectedFlowNodeId);
+    const incomingRoutes: PiRouteMaterialStub[] = node?.data.incomingRoutes ?? [];
+    const outgoingRoutes: PiRouteMaterialStub[] = node?.data.outgoingRoutes ?? [];
+    return {
+      typeId,
+      structureId: pin.S,
+      index: idx,
+      layerH: pin.H,
+      typeDetails,
+      incomingRoutes,
+      outgoingRoutes
+    };
   });
 
   async function loadTemplateList() {
@@ -113,11 +224,7 @@
 </script>
 
 <div class="flex max-w-6xl flex-col gap-4">
-  <h1 class="text-xl font-semibold">PI Templates</h1>
-  <p class="text-sm text-muted-foreground">
-    Visualize colony layouts from your PlanetaryInteractionTemplates folder. Placements show structure type
-    IDs (T); names can be resolved later. Edges follow material routes (R).
-  </p>
+  <PiTemplateIntro />
 
   {#if listLoading}
     <p class="text-sm text-muted-foreground">Loading templates...</p>
@@ -126,59 +233,33 @@
   {:else if templateFiles.length === 0}
     <p class="text-sm text-muted-foreground">No PI templates were found.</p>
   {:else}
-    <div class="space-y-2">
-      <label for="pi-template-file" class="text-sm font-medium">Template file</label>
-      <select
-        id="pi-template-file"
-        class="w-full max-w-xl rounded-md border border-input bg-background px-3 py-2 text-sm"
-        bind:value={selectedFile}
-        onchange={() => void onTemplateChange()}
-      >
-        {#each templateFiles as fileName (fileName)}
-          <option value={fileName}>{fileName}</option>
-        {/each}
-      </select>
-    </div>
+    <PiTemplateFileSelect bind:selectedFile {templateFiles} onfilechange={() => void onTemplateChange()} />
 
     {#if contentLoading}
       <p class="text-sm text-muted-foreground">Loading template...</p>
     {:else if contentError}
       <p class="text-sm text-destructive">{contentError}</p>
     {:else if templateModel && templateSummary}
-      <div class="space-y-1 rounded-md border bg-muted/20 p-3">
-        <h2 class="text-sm font-semibold">Comment (decoded)</h2>
-        <p class="text-sm wrap-break-word">{decodedComment || "No comment."}</p>
-      </div>
+      <PiTemplateDecodedComment text={decodedComment} />
 
-      <dl
-        class="grid max-w-xl grid-cols-2 gap-x-4 gap-y-1 rounded-md border bg-muted/10 px-3 py-2 text-xs sm:grid-cols-3"
-      >
-        <div><dt class="text-muted-foreground">CmdCtrLv</dt><dd class="font-mono">{templateSummary.cmdCtrLv}</dd></div>
-        <div><dt class="text-muted-foreground">Diam</dt><dd class="font-mono">{templateSummary.diam}</dd></div>
-        <div><dt class="text-muted-foreground">Pln</dt><dd class="font-mono">{templateSummary.pln}</dd></div>
-        <div><dt class="text-muted-foreground">Placements</dt><dd class="font-mono">{templateSummary.placements}</dd></div>
-        <div><dt class="text-muted-foreground">Routes</dt><dd class="font-mono">{templateSummary.routes}</dd></div>
-        <div><dt class="text-muted-foreground">Links (L)</dt><dd class="font-mono">{templateSummary.links}</dd></div>
-      </dl>
+      <PiTemplateSummaryGrid summary={templateSummary} />
 
-      {#key selectedFile}
-        <div class="relative h-[min(70vh,560px)] w-full overflow-hidden rounded-md border bg-background">
-          <SvelteFlow
-            nodes={flowNodes}
-            edges={flowEdges}
-            {nodeTypes}
-            fitView
-            fitViewOptions={{ padding: 0.15, minZoom: 0.05, maxZoom: 1.5 }}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={true}
-            class="h-full w-full"
-          >
-            <Background gap={16} size={1} />
-            <Controls showLock={false} />
-          </SvelteFlow>
-        </div>
-      {/key}
+      <PiTemplateSdeStatus
+        pending={typesLookupPending}
+        error={typesLookupError}
+        showEmptyCatalogHint={templateModel != null &&
+          Object.keys(piTypesById).length === 0 &&
+          !typesLookupPending}
+      />
+
+      <PiTemplateWorkspace
+        flowKey={flowRemountKey}
+        flowNodes={flowNodes}
+        flowEdges={flowEdges}
+        onselectionchange={onFlowSelectionChange}
+        selection={selectedPlacementResolved}
+        placementCount={templateModel.P.length}
+      />
     {/if}
   {/if}
 </div>

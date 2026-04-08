@@ -1,19 +1,38 @@
 <script lang="ts">
   import { Handle, Position } from "@xyflow/svelte";
   import type { Node, NodeProps } from "@xyflow/svelte";
-  import type { PiPlacementNodeData } from "$lib/pi-template/template-to-flow";
+  import {
+    PI_NODE_HEIGHT,
+    PI_NODE_WIDTH,
+    type PiPlacementNodeData
+  } from "$lib/pi-template/template-to-flow";
 
-  let { data }: NodeProps<Node<PiPlacementNodeData, "piPlacement">> = $props();
+  let { data, selected }: NodeProps<Node<PiPlacementNodeData, "piPlacement">> = $props();
+
+  const handleClass = "size-2 border border-border bg-muted";
+
+  let displayTitle = $derived(
+    data.typeDetails?.name?.trim() ? data.typeDetails.name.trim() : `Type ${data.typeId}`
+  );
 </script>
 
-<div class="min-w-28 rounded-md border border-border bg-card px-2.5 py-2 text-xs shadow-sm">
-  <div class="font-mono text-sm font-semibold tabular-nums">T {data.typeId}</div>
-  {#if data.structureId != null}
-    <div class="mt-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">S {data.structureId}</div>
-  {:else}
-    <div class="mt-0.5 text-[11px] text-muted-foreground">S -</div>
-  {/if}
+<!-- Size matches PI_NODE_WIDTH / PI_NODE_HEIGHT in template-to-flow.ts -->
+<div
+  class="flex items-center justify-center rounded-full border bg-card text-center shadow-sm {selected
+    ? 'border-primary ring-2 ring-primary/40 ring-offset-2 ring-offset-background'
+    : 'border-border'}"
+  style:width="{PI_NODE_WIDTH}px"
+  style:height="{PI_NODE_HEIGHT}px"
+  title={displayTitle}
+>
+  <span class="line-clamp-3 px-2 text-[10px] font-semibold leading-tight text-foreground">{displayTitle}</span>
 </div>
 
-<Handle type="target" position={Position.Left} class="size-2 border border-border bg-muted" />
-<Handle type="source" position={Position.Right} class="size-2 border border-border bg-muted" />
+<Handle id="in-top" type="target" position={Position.Top} class={handleClass} />
+<Handle id="out-top" type="source" position={Position.Top} class={handleClass} />
+<Handle id="in-right" type="target" position={Position.Right} class={handleClass} />
+<Handle id="out-right" type="source" position={Position.Right} class={handleClass} />
+<Handle id="in-bottom" type="target" position={Position.Bottom} class={handleClass} />
+<Handle id="out-bottom" type="source" position={Position.Bottom} class={handleClass} />
+<Handle id="in-left" type="target" position={Position.Left} class={handleClass} />
+<Handle id="out-left" type="source" position={Position.Left} class={handleClass} />

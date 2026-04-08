@@ -5,6 +5,8 @@ mod eve_preview_windows;
 mod main_thread;
 mod error;
 mod eve_chat_log_service;
+mod eve_static_data;
+mod eve_sde;
 mod eve_profile_tools;
 #[cfg(target_os = "windows")]
 mod global_hotkeys;
@@ -39,7 +41,8 @@ use crate::models::{
     EveDetectedProfile, EveFolderSettings, EveLogSettings, EveProfileSettingsSources, GridLayoutFormPrefs,
     GridLayoutPayload, GridLayoutPreviewItem, HealthSnapshot, MonitorInfoDto, MumbleLink,
     MumbleLinksOverlaySettings,
-    MumbleServerGroup, MumbleTreeSnapshot, PiTemplate, PiTemplateValidationIssue, Profile, ThumbnailConfig, ThumbnailSetting,
+    EveTypeSnapshot, MumbleServerGroup, MumbleTreeSnapshot, PiTemplate, PiTemplateValidationIssue, Profile, ThumbnailConfig,
+    ThumbnailSetting,
     WidgetOverlayLayout, WidgetOverlaySettings,
 };
 use crate::thumbnail_service::{RuntimeThumbnailStateSnapshot, ThumbnailService};
@@ -288,6 +291,97 @@ fn is_remote_newer(current_version: &str, latest_version: &str) -> bool {
         }
     }
     false
+}
+
+#[tauri::command]
+fn eve_static_data_status(state: State<'_, AppState>) -> Result<eve_static_data::EveStaticDataStatus, String> {
+    let offer_dismissed = state
+        .db
+        .get_app_setting("EveStaticDataOfferDismissed".to_string())
+        .ok()
+        .flatten()
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    eve_static_data::build_status(&state.db, offer_dismissed)
+}
+
+#[tauri::command]
+fn eve_static_data_dismiss_offer(state: State<'_, AppState>) -> Result<(), String> {
+    state
+        .db
+        .set_app_setting("EveStaticDataOfferDismissed".to_string(), "true".to_string())
+}
+
+#[tauri::command]
+fn eve_static_data_dismiss_catalog_notice(state: State<'_, AppState>) -> Result<(), String> {
+    eve_static_data::dismiss_catalog_update_notice(&state.db)
+}
+
+/// Rebuild `EveSdeTypes` / `EveSdeGroups` from local `types.jsonl` and `groups.jsonl` (no download).
+#[tauri::command]
+fn eve_sde_import_from_local(state: State<'_, AppState>) -> Result<(), String> {
+    state.db.eve_sde_reingest_from_static_dir()
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EveSdeLookupTypesRequest {
+    #[serde(alias = "type_ids")]
+    type_ids: Vec<i64>,
+}
+
+/// Resolve type metadata from SQLite `EveSdeTypes` / `EveSdeGroups` (ingested from SDE JSONL next to the executable).
+#[tauri::command]
+fn eve_sde_lookup_types(
+    state: State<'_, AppState>,
+    req: EveSdeLookupTypesRequest,
+) -> Result<std::collections::HashMap<String, EveTypeSnapshot>, String> {
+    state.db.eve_sde_lookup_types(&req.type_ids)
+}
+
+#[tauri::command]
+fn eve_static_data_download(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    if !eve_static_data::try_begin_download() {
+        return Err("A download is already in progress.".to_string());
+    }
+    let db = state.db.clone();
+    std::thread::Builder::new()
+        .name("eve-static-data-download".into())
+        .spawn(move || {
+            struct FinishDownloadGuard;
+            impl Drop for FinishDownloadGuard {
+                fn drop(&mut self) {
+                    eve_static_data::finish_download();
+                }
+            }
+            let _finish_guard = FinishDownloadGuard;
+
+            let result = eve_static_data::download_and_install_with_emit(&app);
+            if result.is_ok() {
+                // Replace EveSdeTypes / EveSdeGroups from the newly installed JSONL files.
+                if let Err(e) = db.eve_sde_reingest_from_static_dir() {
+                    diag::emit_ui(
+                        "warn",
+                        "eve_sde",
+                        &format!("SDE re-ingest after static data download failed: {e}"),
+                    );
+                }
+                let _ = eve_static_data::dismiss_catalog_update_notice(db.as_ref());
+            }
+            let message = match &result {
+                Ok(()) => None,
+                Err(e) => Some(sanitize_error("eve_static_data_download", e.clone())),
+            };
+            let done = eve_static_data::EveStaticDataDownloadDoneEvent {
+                ok: result.is_ok(),
+                message,
+            };
+            let _ = app.emit("eve-static-data-download-done", &done);
+        })
+        .map_err(|e| {
+            eve_static_data::finish_download();
+            format!("Failed to start download: {e}")
+        })?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1775,13 +1869,14 @@ pub fn run() {
         ),
     );
     diag::trace("boot", "AppState initialized");
-    let boot_cwd = std::env::current_dir()
+    let boot_exe = std::env::current_exe()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| "(unknown)".to_string());
     diag::trace(
         "boot",
         &format!(
-            "settings SQLite path (import/export use this file; DbService::new used cwd={boot_cwd}): {}",
+            "settings SQLite path (import/export; same folder as executable {}): {}",
+            boot_exe,
             diag_settings_db_path(state.db.as_ref())
         ),
     );
@@ -1821,6 +1916,19 @@ pub fn run() {
                 let db = app.state::<AppState>().db.clone();
                 widget_overlay::ensure_cursor_poll(app.handle());
                 widget_overlay::sync_widget_overlay_from_db(app.handle(), &db);
+            }
+            {
+                let db = app.state::<AppState>().db.clone();
+                let _ = std::thread::Builder::new()
+                    .name("eve-sde-seed".into())
+                    .spawn(move || match db.eve_sde_try_seed_from_disk_if_empty() {
+                        Ok(()) => {}
+                        Err(e) => diag::emit_ui(
+                            "warn",
+                            "eve_sde",
+                            &format!("SDE SQLite seed (empty EveSdeTypes) failed: {e}"),
+                        ),
+                    });
             }
             diag::trace("boot", "tauri setup callback complete");
             Ok(())
@@ -1906,6 +2014,12 @@ pub fn run() {
             activate_window_by_pid,
             open_external_url,
             check_latest_release,
+            eve_static_data_status,
+            eve_static_data_dismiss_offer,
+            eve_static_data_dismiss_catalog_notice,
+            eve_static_data_download,
+            eve_sde_import_from_local,
+            eve_sde_lookup_types,
             app_ready,
             widget_get_snapshot,
             get_runtime_thumbnail_state,

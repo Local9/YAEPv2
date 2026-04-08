@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::Duration;
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -11,6 +13,9 @@ use crate::models::{
 };
 
 const GRID_LAYOUT_PREFS_KEY: &str = "GridLayoutPrefsJson";
+
+/// Serialize full SDE JSONL imports so the boot seed thread and `eve_sde_lookup_types` cannot run two ingests at once.
+static SDE_INGEST_MUTEX: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct GridLayoutPrefsStore {
@@ -41,33 +46,33 @@ fn normalize_color_hex(input: Option<&str>) -> String {
     format!("#{}", value.to_ascii_lowercase())
 }
 
+fn settings_db_path_next_to_executable() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let parent = exe
+        .parent()
+        .ok_or_else(|| "Executable path has no parent directory".to_string())?;
+    Ok(parent.join("settings.db"))
+}
+
 impl DbService {
-    /// SQLite settings file used at runtime. Log with [`crate::diag::trace`] when debugging import/export (YAEP_DIAG).
+    /// SQLite settings file used at runtime: `settings.db` next to the application executable
+    /// (same folder as `eve-static-data`). Log with [`crate::diag::trace`] when debugging import/export (YAEP_DIAG).
     pub fn settings_db_path(&self) -> &Path {
         self.db_path.as_path()
     }
 
     pub fn new() -> Result<Self, String> {
-        let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-        let db_path = if cwd
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.eq_ignore_ascii_case("src-tauri"))
-        {
-            cwd.join("settings.db")
-        } else if cwd.join("src-tauri").is_dir() {
-            cwd.join("src-tauri").join("settings.db")
-        } else {
-            cwd.join("settings.db")
-        };
-
+        let db_path = settings_db_path_next_to_executable()?;
         let service = Self { db_path };
         service.initialize()?;
         Ok(service)
     }
 
     fn connection(&self) -> Result<Connection, String> {
-        Connection::open(&self.db_path).map_err(|e| e.to_string())
+        let conn = Connection::open(&self.db_path).map_err(|e| e.to_string())?;
+        conn.busy_timeout(Duration::from_secs(30))
+            .map_err(|e| e.to_string())?;
+        Ok(conn)
     }
 
     pub(crate) fn db_conn(&self) -> Result<Connection, String> {
@@ -81,6 +86,8 @@ impl DbService {
         conn.execute_batch(include_str!("../sql/mumble_and_groups.sql"))
             .map_err(|e| e.to_string())?;
         conn.execute_batch(include_str!("../sql/mumble_folders.sql"))
+            .map_err(|e| e.to_string())?;
+        conn.execute_batch(include_str!("../sql/eve_sde.sql"))
             .map_err(|e| e.to_string())?;
         self.ensure_mumble_links_tree_columns(&conn)?;
         self.ensure_mumble_folder_icon_key_column(&conn)?;
@@ -2003,6 +2010,56 @@ impl DbService {
             return Err("Grid layout preferences are too large to store.".to_string());
         }
         self.set_app_setting(GRID_LAYOUT_PREFS_KEY.to_string(), json)
+    }
+
+    /// If SDE tables are empty but `types.jsonl` / `groups.jsonl` exist next to the executable, ingest once.
+    pub fn eve_sde_try_seed_from_disk_if_empty(&self) -> Result<(), String> {
+        let _ingest_guard = SDE_INGEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let conn = self.connection()?;
+        let n = crate::eve_sde::count_types(&conn)?;
+        if n > 0 {
+            return Ok(());
+        }
+        let root = crate::eve_static_data::static_data_dir()?;
+        let Some((t, g)) = crate::eve_static_data::resolve_sde_jsonl_paths(&root) else {
+            return Ok(());
+        };
+        let mut conn = self.connection()?;
+        crate::eve_sde::ingest_from_jsonl_paths(&mut conn, &t, &g)
+    }
+
+    /// Full re-import from the static data directory (run after a new SDE download).
+    pub fn eve_sde_reingest_from_static_dir(&self) -> Result<(), String> {
+        let _ingest_guard = SDE_INGEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let root = crate::eve_static_data::static_data_dir()?;
+        let Some((t, g)) = crate::eve_static_data::resolve_sde_jsonl_paths(&root) else {
+            return Err(
+                "types.jsonl and groups.jsonl not found under the EVE static data folder (root or one subfolder)."
+                    .to_string(),
+            );
+        };
+        let mut conn = self.connection()?;
+        crate::eve_sde::ingest_from_jsonl_paths(&mut conn, &t, &g)
+    }
+
+    /// Number of rows in `EveSdeTypes` (for UI: offer import when local JSONL exists but count is 0).
+    pub fn eve_sde_types_count(&self) -> Result<i64, String> {
+        let conn = self.connection()?;
+        crate::eve_sde::count_types(&conn)
+    }
+
+    /// Look up type rows in `EveSdeTypes` and group names in `EveSdeGroups` (seeds from JSONL once if tables are empty).
+    pub fn eve_sde_lookup_types(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<std::collections::HashMap<String, crate::models::EveTypeSnapshot>, String> {
+        self.eve_sde_try_seed_from_disk_if_empty()?;
+        let conn = self.connection()?;
+        crate::eve_sde::lookup_types(&conn, type_ids)
     }
 }
 

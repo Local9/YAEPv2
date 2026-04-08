@@ -135,6 +135,22 @@ pub struct PiTemplateValidationIssue {
     pub message: String,
 }
 
+/// Resolved EVE type for UI (from SQLite `EveSdeTypes` payload, English; `EveSdeGroups` for group name).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EveTypeSnapshot {
+    pub type_id: i64,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub base_price: Option<f64>,
+    pub group_id: Option<i64>,
+    pub group_name: Option<String>,
+    pub volume: Option<f64>,
+    pub published: Option<bool>,
+    pub portion_size: Option<i64>,
+    pub mass: Option<f64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EveChatChannel {

@@ -183,6 +183,56 @@ export type AppReleaseCheck = {
   releaseUrl: string | null;
 };
 
+/** Latest SDE build from developers.eveonline.com (cached in SQLite after sync). */
+export type EveSdeRemoteInfo = {
+  _key: string;
+  buildNumber: number;
+  releaseDate: string;
+};
+
+/** Progress events while downloading or extracting the EVE static ZIP (Tauri event `eve-static-data-progress`). */
+export type EveStaticDataDownloadProgress = {
+  phase: "downloading" | "extracting";
+  bytesReceived: number;
+  totalBytes: number | null;
+  extractIndex: number | null;
+  extractTotal: number | null;
+};
+
+/** Completion of background static data download (Tauri event `eve-static-data-download-done`). */
+export type EveStaticDataDownloadDone = {
+  ok: boolean;
+  message: string | null;
+};
+
+/** Row resolved from SQLite `EveSdeTypes` payload (SDE type id), English strings, HTML stripped from description. */
+export type EveTypeSnapshot = {
+  typeId: number;
+  name: string | null;
+  description: string | null;
+  basePrice: number | null;
+  groupId: number | null;
+  /** English group name from `EveSdeGroups` when `groupId` is set. */
+  groupName: string | null;
+  volume: number | null;
+  published: boolean | null;
+  portionSize: number | null;
+  mass: number | null;
+};
+
+/** Local EVE static JSONL bundle (downloaded next to the executable). */
+export type EveStaticDataStatus = {
+  path: string;
+  installed: boolean;
+  downloadedAtUnix: number | null;
+  offerDismissed: boolean;
+  remoteSde: EveSdeRemoteInfo | null;
+  /** True when CCP published a new build since the last stored value (dismiss or re-download clears). */
+  sdeCatalogUpdatePending: boolean;
+  /** Rows in SQLite `EveSdeTypes`; 0 with `installed` means use Import to fill the cache from local JSONL. */
+  sdeSqliteTypesCount: number;
+};
+
 /** Position and size for the overlay widget shell (drag/resize). */
 export type WidgetLayoutRect = {
   x: number;

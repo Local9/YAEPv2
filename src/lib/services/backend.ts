@@ -19,6 +19,8 @@ import type {
   EveChatChannelType,
   EveLogSettings,
   AppReleaseCheck,
+  EveStaticDataStatus,
+  EveTypeSnapshot,
   WidgetSnapshot,
   WidgetOverlayLayout,
   WidgetOverlaySettings,
@@ -37,6 +39,31 @@ export const backend = {
   },
   checkLatestRelease(): Promise<AppReleaseCheck> {
     return invoke("check_latest_release");
+  },
+  eveStaticDataStatus(): Promise<EveStaticDataStatus> {
+    return invoke("eve_static_data_status");
+  },
+  eveStaticDataDismissOffer(): Promise<void> {
+    return invoke("eve_static_data_dismiss_offer");
+  },
+  eveStaticDataDismissCatalogNotice(): Promise<void> {
+    return invoke("eve_static_data_dismiss_catalog_notice");
+  },
+  eveStaticDataDownload(): Promise<void> {
+    return invoke("eve_static_data_download");
+  },
+  /** Load local `types.jsonl` / `groups.jsonl` into SQLite (same as after a successful download). */
+  eveSdeImportFromLocal(): Promise<void> {
+    return invoke("eve_sde_import_from_local");
+  },
+  /**
+   * Type names and stats from SQLite SDE tables (`EveSdeTypes` / `EveSdeGroups`).
+   * Pass EVE type IDs from PI templates: `P[].T` (structures) and `R[].T` (routed commodities); see `PI-Template-Field-Reference.md`.
+   */
+  eveSdeLookupTypes(typeIds: number[]): Promise<Record<string, EveTypeSnapshot>> {
+    return invoke("eve_sde_lookup_types", {
+      req: { typeIds: typeIds.map((n) => Math.trunc(n)) }
+    });
   },
   listMonitors(): Promise<MonitorInfoDto[]> {
     return invoke("list_monitors_cmd");

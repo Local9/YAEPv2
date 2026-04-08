@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::thread;
 
 use serde::Serialize;
-use sysinfo::{ProcessesToUpdate, System};
+use sysinfo::System;
 use tauri::{AppHandle, Emitter};
 use tokio::time::sleep;
 
@@ -13,7 +13,7 @@ use crate::db::DbService;
 use crate::diag;
 use crate::eve_preview_windows::try_list_preview_eve_windows;
 use crate::dwm::DwmService;
-use crate::windows::{WindowService, WindowSnapshot};
+use crate::windows::WindowService;
 
 const MONITOR_INTERVAL_MS: u64 = 2000;
 const FOCUS_INTERVAL_MS: u64 = 100;
