@@ -52,6 +52,91 @@ pub struct EveLogSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EveFolderSettings {
+    pub chat_logs_path: String,
+    pub game_logs_path: String,
+    pub pi_templates_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PiTemplateLink {
+    /// Route path (ordered pin/node references).
+    #[serde(rename = "P")]
+    pub path: Vec<i64>,
+    /// Routed quantity.
+    #[serde(rename = "Q")]
+    pub quantity: i64,
+    /// Routed type ID.
+    #[serde(rename = "T")]
+    pub type_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PiTemplatePin {
+    /// Height / layer hint for placement.
+    #[serde(rename = "H")]
+    pub head: i64,
+    /// Latitude (radians).
+    #[serde(rename = "La")]
+    pub latitude: f64,
+    /// Longitude (radians).
+    #[serde(rename = "Lo")]
+    pub longitude: f64,
+    /// Structure/schematic ID (nullable in template exports).
+    #[serde(rename = "S")]
+    pub schematic_id: Option<i64>,
+    /// Pin type ID.
+    #[serde(rename = "T")]
+    pub type_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PiTemplateLegendItem {
+    /// Direction/group marker used by the template format.
+    #[serde(rename = "D")]
+    pub icon_id: i64,
+    /// Link/legend level.
+    #[serde(rename = "Lv")]
+    pub level: i64,
+    /// Structure/type reference ID.
+    #[serde(rename = "S")]
+    pub type_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PiTemplate {
+    /// Command Center Upgrades skill level.
+    #[serde(rename = "CmdCtrLv")]
+    pub command_center_level: i64,
+    /// User comment/label for the template.
+    #[serde(rename = "Cmt")]
+    pub comment: String,
+    /// Planet diameter.
+    #[serde(rename = "Diam")]
+    pub diameter: f64,
+    /// Link/legend definitions (`D`, `Lv`, `S`).
+    #[serde(rename = "L")]
+    pub legend: Vec<PiTemplateLegendItem>,
+    /// Structure placements (`H`, `La`, `Lo`, `S`, `T`).
+    #[serde(rename = "P")]
+    pub pins: Vec<PiTemplatePin>,
+    /// Planet type identifier from the template.
+    #[serde(rename = "Pln")]
+    pub planet_type_id: i64,
+    /// Route definitions (`P`, `Q`, `T`).
+    #[serde(rename = "R")]
+    pub routes: Vec<PiTemplateLink>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PiTemplateValidationIssue {
+    pub file_name: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EveChatChannel {
     pub id: i64,
     pub profile_id: i64,

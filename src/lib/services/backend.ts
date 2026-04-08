@@ -23,6 +23,9 @@ import type {
   WidgetOverlayLayout,
   WidgetOverlaySettings,
   EveDetectedProfile,
+  EveFolderSettings,
+  PiTemplate,
+  PiTemplateValidationIssue,
   EveProfileSettingsSources
 } from "$models/domain";
 
@@ -84,6 +87,15 @@ export const backend = {
   },
   eveSaveLogSettings(profileId: number, settings: EveLogSettings): Promise<void> {
     return invoke("eve_save_log_settings", { profileId, settings });
+  },
+  eveGetFolderSettings(profileId: number): Promise<EveFolderSettings> {
+    return invoke("eve_get_folder_settings", { profileId });
+  },
+  eveGetFolderDefaults(): Promise<EveFolderSettings> {
+    return invoke("eve_get_folder_defaults");
+  },
+  eveSaveFolderSettings(profileId: number, settings: EveFolderSettings): Promise<void> {
+    return invoke("eve_save_folder_settings", { profileId, settings });
   },
   eveListChatChannels(profileId: number): Promise<EveChatChannel[]> {
     return invoke("eve_list_chat_channels", { profileId });
@@ -321,6 +333,21 @@ export const backend = {
   },
   eveFetchCharacterName(characterId: number): Promise<string> {
     return invoke("eve_fetch_character_name", { characterId });
+  },
+  eveListPiTemplates(): Promise<string[]> {
+    return invoke("eve_list_pi_templates");
+  },
+  eveReadPiTemplate(fileName: string): Promise<string> {
+    return invoke("eve_read_pi_template", { fileName });
+  },
+  eveReadPiTemplateJson(fileName: string): Promise<PiTemplate> {
+    return invoke("eve_read_pi_template_json", { fileName });
+  },
+  eveWritePiTemplateJson(fileName: string, template: PiTemplate): Promise<void> {
+    return invoke("eve_write_pi_template_json", { fileName, template });
+  },
+  eveValidatePiTemplates(): Promise<PiTemplateValidationIssue[]> {
+    return invoke("eve_validate_pi_templates");
   },
   widgetOverlayGetSettings(): Promise<WidgetOverlaySettings> {
     return invoke("widget_overlay_get_settings");

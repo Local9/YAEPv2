@@ -20,6 +20,7 @@ mod widget_service;
 mod windows;
 
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
@@ -35,10 +36,10 @@ use crate::eve_profile_tools::EveProfileToolsService;
 use crate::hotkeys::HotkeyService;
 use crate::models::{
     BrowserQuickLink, ClientGroup, ClientGroupDetail, DrawerSettings, EveChatChannel,
-    EveDetectedProfile, EveLogSettings, EveProfileSettingsSources, GridLayoutFormPrefs,
+    EveDetectedProfile, EveFolderSettings, EveLogSettings, EveProfileSettingsSources, GridLayoutFormPrefs,
     GridLayoutPayload, GridLayoutPreviewItem, HealthSnapshot, MonitorInfoDto, MumbleLink,
     MumbleLinksOverlaySettings,
-    MumbleServerGroup, MumbleTreeSnapshot, Profile, ThumbnailConfig, ThumbnailSetting,
+    MumbleServerGroup, MumbleTreeSnapshot, PiTemplate, PiTemplateValidationIssue, Profile, ThumbnailConfig, ThumbnailSetting,
     WidgetOverlayLayout, WidgetOverlaySettings,
 };
 use crate::thumbnail_service::{RuntimeThumbnailStateSnapshot, ThumbnailService};
@@ -88,6 +89,57 @@ fn sanitize_error(context: &str, err: String) -> String {
     GENERIC_OPERATION_ERROR.to_string()
 }
 
+fn eve_pi_templates_dir() -> Result<PathBuf, String> {
+    let user_profile = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map_err(|_| "Unable to resolve user profile path".to_string())?;
+    Ok(Path::new(&user_profile)
+        .join("Documents")
+        .join("EVE")
+        .join("PlanetaryInteractionTemplates"))
+}
+
+fn default_pi_templates_path() -> Result<String, String> {
+    Ok(eve_pi_templates_dir()?.display().to_string())
+}
+
+fn default_documents_eve_dir() -> Result<PathBuf, String> {
+    let user_profile = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map_err(|_| "Unable to resolve user profile path".to_string())?;
+    Ok(Path::new(&user_profile).join("Documents").join("EVE"))
+}
+
+fn default_chat_logs_path() -> Result<String, String> {
+    Ok(default_documents_eve_dir()?
+        .join("logs")
+        .join("Chatlogs")
+        .display()
+        .to_string())
+}
+
+fn default_game_logs_path() -> Result<String, String> {
+    Ok(default_documents_eve_dir()?
+        .join("logs")
+        .join("Gamelogs")
+        .display()
+        .to_string())
+}
+
+fn validate_template_file_name(file_name: &str) -> Result<String, String> {
+    let trimmed = file_name.trim();
+    if trimmed.is_empty() || trimmed.len() > 255 {
+        return Err("Invalid template file name".to_string());
+    }
+    if trimmed.contains('\\') || trimmed.contains('/') {
+        return Err("Template file name must not include path separators".to_string());
+    }
+    if !trimmed.to_ascii_lowercase().ends_with(".json") {
+        return Err("Template file name must end with .json".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
 fn is_boolean_setting_value(value: &str) -> bool {
     value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
 }
@@ -99,6 +151,7 @@ fn validate_app_setting_key(key: &str) -> Result<(), String> {
         "DiagnosticsLogEnabled",
         "EnableGlobalHotkeys",
         "Theme",
+        "PiTemplatesPath",
         "DrawerScreenIndex",
         "DrawerHardwareId",
         "DrawerSide",
@@ -392,6 +445,52 @@ fn eve_save_log_settings(
     settings: EveLogSettings,
 ) -> Result<(), String> {
     state.db.save_eve_log_settings(profile_id, settings)
+}
+
+#[tauri::command]
+fn eve_get_folder_settings(state: State<'_, AppState>, profile_id: i64) -> Result<EveFolderSettings, String> {
+    let log_settings = state.db.get_eve_log_settings(profile_id)?;
+    let pi_templates_path = state
+        .db
+        .get_app_setting("PiTemplatesPath".to_string())?
+        .unwrap_or(default_pi_templates_path()?);
+    Ok(EveFolderSettings {
+        chat_logs_path: log_settings.chat_logs_path,
+        game_logs_path: log_settings.game_logs_path,
+        pi_templates_path,
+    })
+}
+
+#[tauri::command]
+fn eve_get_folder_defaults() -> Result<EveFolderSettings, String> {
+    Ok(EveFolderSettings {
+        chat_logs_path: default_chat_logs_path()?,
+        game_logs_path: default_game_logs_path()?,
+        pi_templates_path: default_pi_templates_path()?,
+    })
+}
+
+#[tauri::command]
+fn eve_save_folder_settings(
+    state: State<'_, AppState>,
+    profile_id: i64,
+    settings: EveFolderSettings,
+) -> Result<(), String> {
+    state.db.save_eve_log_settings(
+        profile_id,
+        EveLogSettings {
+            chat_logs_path: settings.chat_logs_path,
+            game_logs_path: settings.game_logs_path,
+        },
+    )?;
+    let pi_templates_path = settings.pi_templates_path.trim().replace('/', "\\");
+    if pi_templates_path.is_empty() {
+        return Err("PI templates path cannot be empty".to_string());
+    }
+    state
+        .db
+        .set_app_setting("PiTemplatesPath".to_string(), pi_templates_path)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1247,6 +1346,112 @@ fn eve_fetch_character_name(
 }
 
 #[tauri::command]
+fn eve_list_pi_templates(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let dir = state
+        .db
+        .get_app_setting("PiTemplatesPath".to_string())?
+        .map(PathBuf::from)
+        .unwrap_or(eve_pi_templates_dir()?);
+    let entries = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
+    let mut templates = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if !entry.file_type().map_err(|e| e.to_string())?.is_file() {
+            continue;
+        }
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        if !file_name.to_ascii_lowercase().ends_with(".json") {
+            continue;
+        }
+        templates.push(file_name.to_string());
+    }
+    templates.sort_unstable();
+    Ok(templates)
+}
+
+#[tauri::command]
+fn eve_read_pi_template(state: State<'_, AppState>, file_name: String) -> Result<String, String> {
+    let safe_name = validate_template_file_name(&file_name)?;
+    let dir = state
+        .db
+        .get_app_setting("PiTemplatesPath".to_string())?
+        .map(PathBuf::from)
+        .unwrap_or(eve_pi_templates_dir()?);
+    let content = std::fs::read_to_string(dir.join(safe_name)).map_err(|e| e.to_string())?;
+    Ok(content)
+}
+
+#[tauri::command]
+fn eve_read_pi_template_json(state: State<'_, AppState>, file_name: String) -> Result<PiTemplate, String> {
+    let safe_name = validate_template_file_name(&file_name)?;
+    let dir = state
+        .db
+        .get_app_setting("PiTemplatesPath".to_string())?
+        .map(PathBuf::from)
+        .unwrap_or(eve_pi_templates_dir()?);
+    let content = std::fs::read_to_string(dir.join(safe_name)).map_err(|e| e.to_string())?;
+    serde_json::from_str::<PiTemplate>(&content).map_err(|e| format!("Invalid PI template JSON: {e}"))
+}
+
+#[tauri::command]
+fn eve_write_pi_template_json(
+    state: State<'_, AppState>,
+    file_name: String,
+    template: PiTemplate,
+) -> Result<(), String> {
+    let safe_name = validate_template_file_name(&file_name)?;
+    let dir = state
+        .db
+        .get_app_setting("PiTemplatesPath".to_string())?
+        .map(PathBuf::from)
+        .unwrap_or(eve_pi_templates_dir()?);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let content = serde_json::to_string_pretty(&template).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(safe_name), content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn eve_validate_pi_templates(state: State<'_, AppState>) -> Result<Vec<PiTemplateValidationIssue>, String> {
+    let dir = state
+        .db
+        .get_app_setting("PiTemplatesPath".to_string())?
+        .map(PathBuf::from)
+        .unwrap_or(eve_pi_templates_dir()?);
+    let entries = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
+    let mut issues = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if !entry.file_type().map_err(|e| e.to_string())?.is_file() {
+            continue;
+        }
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        if !file_name.to_ascii_lowercase().ends_with(".json") {
+            continue;
+        }
+        let file_path = entry.path();
+        match std::fs::read_to_string(&file_path) {
+            Ok(content) => {
+                if let Err(err) = serde_json::from_str::<PiTemplate>(&content) {
+                    issues.push(PiTemplateValidationIssue {
+                        file_name,
+                        message: format!("Parse error: {err}"),
+                    });
+                }
+            }
+            Err(err) => {
+                issues.push(PiTemplateValidationIssue {
+                    file_name,
+                    message: format!("Read error: {err}"),
+                });
+            }
+        }
+    }
+    issues.sort_by(|a, b| a.file_name.cmp(&b.file_name));
+    Ok(issues)
+}
+
+#[tauri::command]
 fn activate_window_by_pid(state: State<'_, AppState>, pid: u32) -> Result<(), String> {
     let snapshot = state.thumbnail_service.snapshot_state();
     if !snapshot.thumbnails.iter().any(|thumb| thumb.pid == pid) {
@@ -1637,6 +1842,9 @@ pub fn run() {
             save_thumbnail_setting,
             eve_get_log_settings,
             eve_save_log_settings,
+            eve_get_folder_settings,
+            eve_get_folder_defaults,
+            eve_save_folder_settings,
             eve_list_chat_channels,
             eve_add_chat_channel,
             eve_remove_chat_channel,
@@ -1690,6 +1898,11 @@ pub fn run() {
             eve_copy_character_files_on_server,
             eve_backup_all_profiles,
             eve_fetch_character_name,
+            eve_list_pi_templates,
+            eve_read_pi_template,
+            eve_read_pi_template_json,
+            eve_write_pi_template_json,
+            eve_validate_pi_templates,
             activate_window_by_pid,
             open_external_url,
             check_latest_release,

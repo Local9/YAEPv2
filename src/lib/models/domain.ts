@@ -31,6 +31,65 @@ export type EveLogSettings = {
   gameLogsPath: string;
 };
 
+export type EveFolderSettings = {
+  chatLogsPath: string;
+  gameLogsPath: string;
+  piTemplatesPath: string;
+};
+
+export type PiTemplateLink = {
+  /** Route path (ordered pin/node references). */
+  P: number[];
+  /** Routed quantity. */
+  Q: number;
+  /** Routed type ID. */
+  T: number;
+};
+
+export type PiTemplatePin = {
+  /** Height / layer hint for placement. */
+  H: number;
+  /** Latitude (radians). */
+  La: number;
+  /** Longitude (radians). */
+  Lo: number;
+  /** Structure/schematic ID (nullable in template exports). */
+  S: number | null;
+  /** Pin type ID. */
+  T: number;
+};
+
+export type PiTemplateLegendItem = {
+  /** Direction/group marker used by the template format. */
+  D: number;
+  /** Link/legend level. */
+  Lv: number;
+  /** Structure/type reference ID. */
+  S: number;
+};
+
+export type PiTemplate = {
+  /** Command Center Upgrades skill level. */
+  CmdCtrLv: number;
+  /** User comment/label for the template. */
+  Cmt: string;
+  /** Planet diameter. */
+  Diam: number;
+  /** Link/legend definitions (`D`, `Lv`, `S`). */
+  L: PiTemplateLegendItem[];
+  /** Structure placements (`H`, `La`, `Lo`, `S`, `T`). */
+  P: PiTemplatePin[];
+  /** Planet type identifier from the template. */
+  Pln: number;
+  /** Route definitions (`P`, `Q`, `T`). */
+  R: PiTemplateLink[];
+};
+
+export type PiTemplateValidationIssue = {
+  fileName: string;
+  message: string;
+};
+
 export type EveChatChannelType = "FleetBoost" | "Intel";
 
 export type EveChatChannel = {

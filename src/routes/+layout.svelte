@@ -43,6 +43,8 @@
     { href: "/eve-profiles", label: "EVE Profiles", Icon: Gamepad2Icon },
     { href: "/settings", label: "Settings", Icon: SettingsIcon, exact: true },
     { href: "/settings/eve-logs", label: "EVE Logs", Icon: SettingsIcon },
+    { href: "/settings/eve-folders", label: "EVE Folders", Icon: SettingsIcon },
+    { href: "/pi-templates", label: "PI Templates", Icon: SettingsIcon },
     { href: "/settings/widget-overlay", label: "Widget overlay", Icon: LayoutPanelIcon }
   ];
 

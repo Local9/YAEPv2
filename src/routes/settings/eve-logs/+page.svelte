@@ -1,18 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { backend } from "$services/backend";
-  import type { EveChatChannel, EveChatChannelType, EveLogSettings, Profile } from "$models/domain";
+  import type { EveChatChannel, EveChatChannelType, Profile } from "$models/domain";
   import { Button } from "$lib/components/ui/button";
   import { ColorPicker } from "$lib/components/ui/color-picker";
   import { Input } from "$lib/components/ui/input";
   import * as Select from "$lib/components/ui/select";
   import { toast } from "svelte-sonner";
 
-  const DEFAULT_CHAT = "%USERPROFILE%\\Documents\\EVE\\logs\\Chatlogs";
-  const DEFAULT_GAME = "%USERPROFILE%\\Documents\\EVE\\logs\\Gamelogs";
-
   let activeProfileId = $state<number | null>(null);
-  let settings = $state<EveLogSettings>({ chatLogsPath: DEFAULT_CHAT, gameLogsPath: DEFAULT_GAME });
   let channels = $state<EveChatChannel[]>([]);
   let channelType = $state<EveChatChannelType>("FleetBoost");
   let channelName = $state("");
@@ -32,14 +28,7 @@
     const profiles: Profile[] = await backend.getProfiles();
     activeProfileId = profiles.find((p) => p.isActive)?.id ?? null;
     if (activeProfileId == null) return;
-    settings = await backend.eveGetLogSettings(activeProfileId);
     channels = await backend.eveListChatChannels(activeProfileId);
-  }
-
-  async function saveSettings() {
-    if (activeProfileId == null) return;
-    await backend.eveSaveLogSettings(activeProfileId, settings);
-    saveMessage = "EVE log settings saved";
   }
 
   async function addChannel() {
@@ -119,23 +108,8 @@
 <div class="max-w-4xl space-y-4">
   <h1 class="text-xl font-semibold">EVE Log Settings</h1>
   <p class="text-sm text-muted-foreground">
-    Configure Chatlogs and Gamelogs roots. Channel tailing reads files from the configured Chat Logs
-    Path.
+    Manage channel sources used for FleetBoost and Intel log parsing.
   </p>
-
-  <div class="space-y-2">
-    <label for="chat-logs-path" class="text-sm font-medium">Chat Logs Path</label>
-    <Input id="chat-logs-path" bind:value={settings.chatLogsPath} />
-    <Button variant="outline" onclick={() => (settings.chatLogsPath = DEFAULT_CHAT)}>Reset default</Button>
-  </div>
-
-  <div class="space-y-2">
-    <label for="game-logs-path" class="text-sm font-medium">Game Logs Path</label>
-    <Input id="game-logs-path" bind:value={settings.gameLogsPath} />
-    <Button variant="outline" onclick={() => (settings.gameLogsPath = DEFAULT_GAME)}>Reset default</Button>
-  </div>
-
-  <Button onclick={saveSettings}>Save paths</Button>
 
   <div class="pt-4">
     <h2 class="mb-2 text-base font-semibold">Channel Sources</h2>
