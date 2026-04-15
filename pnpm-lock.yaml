@@ -40,8 +40,8 @@ importers:
         specifier: ^3.12.0
         version: 3.12.0
       '@lucide/svelte':
-        specifier: ^1.7.0
-        version: 1.7.0(svelte@5.55.1)
+        specifier: ^1.8.0
+        version: 1.8.0(svelte@5.55.1)
       '@sveltejs/adapter-static':
         specifier: ^3.0.8
         version: 3.0.10(@sveltejs/kit@2.55.0(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.55.1)(vite@6.4.1(jiti@2.6.1)(lightningcss@1.32.0)))(svelte@5.55.1)(typescript@5.9.3)(vite@6.4.1(jiti@2.6.1)(lightningcss@1.32.0)))
@@ -367,8 +367,8 @@ packages:
   '@lix-js/server-protocol-schema@0.1.1':
     resolution: {integrity: sha512-jBeALB6prAbtr5q4vTuxnRZZv1M2rKe8iNqRQhFJ4Tv7150unEa0vKyz0hs8Gl3fUGsWaNJBh3J8++fpbrpRBQ==}
 
-  '@lucide/svelte@1.7.0':
-    resolution: {integrity: sha512-YytBKOUBGox7yWcykZnYxOkn5WpR5G1qYXLYXV/j1B79SOTTEKzB+s5yF5Rq9l9OkweDStNH2b4yTqfvhEhV8g==}
+  '@lucide/svelte@1.8.0':
+    resolution: {integrity: sha512-+zYQUKqEOVP5lxbGmxL1OVgGMQtRK91eIJ0bR+3Cr1ts4oQEsQfxyzzd5X47psJlblAuGFrl2xm4YuATjR9oaA==}
     peerDependencies:
       svelte: ^5
 
@@ -1938,7 +1938,7 @@ snapshots:
 
   '@lix-js/server-protocol-schema@0.1.1': {}
 
-  '@lucide/svelte@1.7.0(svelte@5.55.1)':
+  '@lucide/svelte@1.8.0(svelte@5.55.1)':
     dependencies:
       svelte: 5.55.1
 
