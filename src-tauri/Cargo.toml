@@ -24,7 +24,7 @@ url = "2.5"
 uuid = { version = "1.11", features = ["v4"] }
 tauri = { version = "2", features = ["tray-icon"] }
 thiserror = "2.0"
-tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "time"] }
 rusqlite = { version = "0.39", features = ["bundled"] }
 sysinfo = "0.38"
 opener = "0.8"
